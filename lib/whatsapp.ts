@@ -131,26 +131,26 @@ export async function queueAndSend(
 
 export const Templates = {
   /** Customer registers for the first time */
-  welcome: (customerName: string, businessName: string, rewardName: string, visitsNeeded: number) =>
-    ['welcome', [customerName, businessName, rewardName, String(visitsNeeded)]] as const,
+  welcome: (customerName: string, businessName: string, rewardName: string, visitsNeeded: number): [string, string[]] =>
+    ['welcome', [customerName, businessName, rewardName, String(visitsNeeded)]],
 
   /** Staff confirms a stamp */
-  stampConfirmed: (customerName: string, businessName: string, stampNumber: number, stampsRemaining: number, rewardName: string) =>
-    ['stamp_confirmed', [customerName, businessName, String(stampNumber), String(stampsRemaining), rewardName]] as const,
+  stampConfirmed: (customerName: string, businessName: string, stampNumber: number, stampsRemaining: number, rewardName: string): [string, string[]] =>
+    ['stamp_confirmed', [customerName, businessName, String(stampNumber), String(stampsRemaining), rewardName]],
 
   /** Customer reaches a new tier */
-  tierUpgrade: (customerName: string, newTierName: string, rewardDescription: string) =>
-    ['tier_upgrade', [customerName, newTierName, rewardDescription]] as const,
+  tierUpgrade: (customerName: string, newTierName: string, rewardDescription: string): [string, string[]] =>
+    ['tier_upgrade', [customerName, newTierName, rewardDescription]],
 
   /** Customer has earned a reward (all stamps filled) */
-  rewardAvailable: (customerName: string, rewardName: string, businessName: string) =>
-    ['reward_available', [customerName, rewardName, businessName]] as const,
+  rewardAvailable: (customerName: string, rewardName: string, businessName: string): [string, string[]] =>
+    ['reward_available', [customerName, rewardName, businessName]],
 
   /** Staff confirms a redemption */
-  redemptionConfirmed: (customerName: string, rewardName: string, businessName: string) =>
-    ['redemption_confirmed', [customerName, rewardName, businessName]] as const,
+  redemptionConfirmed: (customerName: string, rewardName: string, businessName: string): [string, string[]] =>
+    ['redemption_confirmed', [customerName, rewardName, businessName]],
 
   /** Win-back for inactive customers (manual trigger) */
-  winBack: (customerName: string, businessName: string, tierName: string) =>
-    ['win_back', [customerName, businessName, tierName]] as const,
+  winBack: (customerName: string, businessName: string, tierName: string): [string, string[]] =>
+    ['win_back', [customerName, businessName, tierName]],
 }
