@@ -1,46 +1,35 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSendLink(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
     try {
       const supabase = createBrowserClient()
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await supabase.auth.signInWithOtp({
         email,
-        password,
+        options: {
+          emailRedirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/callback`,
+        },
       })
 
       if (authError) {
-        setError('Invalid email or password.')
+        setError('Failed to send link. Please try again.')
         setLoading(false)
         return
       }
 
-      const role = data.user?.user_metadata?.role
-
-      if (role === 'operator') {
-        router.push('/operator')
-      } else if (role === 'owner') {
-        const slug = data.user?.user_metadata?.business_slug
-        router.push(`/dashboard/${slug ?? ''}`)
-      } else {
-        setError('Your account does not have access. Contact support.')
-        await supabase.auth.signOut()
-        setLoading(false)
-      }
+      setSent(true)
     } catch {
       setError('Something went wrong. Please try again.')
       setLoading(false)
@@ -61,55 +50,61 @@ export default function LoginPage() {
           <p className="text-sm text-[#A7A3A8]">Business dashboard login</p>
         </div>
 
-        {/* Form */}
         <div className="rounded-3xl bg-white p-8 shadow-sm border border-[#E7E5E4]">
-          <h1 className="text-xl font-bold text-[#1A1A1A] mb-6">Sign in</h1>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#A7A3A8] mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-2xl bg-[#F7F7F5] px-5 py-4 text-base font-semibold text-[#1A1A1A] border-0 focus:ring-2 focus:ring-[#1A1A1A] focus:outline-none"
-                placeholder="you@example.com"
-                autoComplete="email"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#A7A3A8] mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-2xl bg-[#F7F7F5] px-5 py-4 text-base font-semibold text-[#1A1A1A] border-0 focus:ring-2 focus:ring-[#1A1A1A] focus:outline-none"
-                placeholder="••••••••"
-                autoComplete="current-password"
-                required
-              />
-            </div>
-
-            {error && (
-              <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                {error}
+          {sent ? (
+            <div className="text-center py-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-50 mx-auto mb-4">
+                <span className="material-symbols-outlined text-green-600" style={{ fontSize: '28px' }}>mark_email_read</span>
               </div>
-            )}
+              <h1 className="text-xl font-bold text-[#1A1A1A] mb-2">Check your inbox</h1>
+              <p className="text-sm text-[#A7A3A8]">
+                We sent a sign-in link to<br />
+                <span className="font-semibold text-[#1A1A1A]">{email}</span>
+              </p>
+              <button
+                onClick={() => { setSent(false); setEmail('') }}
+                className="mt-6 text-sm font-semibold text-[#6D28F5] hover:underline"
+              >
+                Use a different email
+              </button>
+            </div>
+          ) : (
+            <>
+              <h1 className="text-xl font-bold text-[#1A1A1A] mb-2">Sign in</h1>
+              <p className="text-sm text-[#A7A3A8] mb-6">We'll send you a magic link — no password needed.</p>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-[999px] bg-[#1A1A1A] py-4 text-sm font-extrabold uppercase tracking-wide text-white transition-all active:scale-[0.98] disabled:opacity-60 mt-2"
-            >
-              {loading ? 'Signing in...' : 'SIGN IN'}
-            </button>
-          </form>
+              <form onSubmit={handleSendLink} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#A7A3A8] mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-2xl bg-[#F7F7F5] px-5 py-4 text-base font-semibold text-[#1A1A1A] border-0 focus:ring-2 focus:ring-[#1A1A1A] focus:outline-none"
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+
+                {error && (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-[999px] bg-[#1A1A1A] py-4 text-sm font-extrabold uppercase tracking-wide text-white transition-all active:scale-[0.98] disabled:opacity-60 mt-2"
+                >
+                  {loading ? 'Sending...' : 'SEND MAGIC LINK'}
+                </button>
+              </form>
+            </>
+          )}
         </div>
 
         <p className="mt-6 text-center text-xs text-[#A7A3A8]">
