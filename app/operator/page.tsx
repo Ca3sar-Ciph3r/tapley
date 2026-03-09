@@ -1,3 +1,5 @@
+import OperatorSidebar from '@/components/operator/OperatorSidebar'
+
 export default function OperatorPage() {
   const businesses = [
     { name: "Spindler's Barbers", type: 'Barber', customers: 24, active: 18, mrr: 800, status: 'live', slug: 'spindlers', color: '#1A1A1A' },
@@ -9,68 +11,9 @@ export default function OperatorPage() {
     { id: 'fa-001', card: 'a3f8c2d1-9e4b', business: "Spindler's Barbers", type: 'Rapid Succession', time: '2h ago' },
   ]
 
-  const navItems = [
-    { label: 'Overview', icon: 'grid_view', href: '/operator', active: true },
-    { label: 'Businesses', icon: 'storefront', href: '/operator/businesses' },
-    { label: 'Cards', icon: 'credit_card', href: '/operator/cards' },
-    { label: 'Fraud Alerts', icon: 'warning', href: '/operator/alerts', badge: 1 },
-    { label: 'Activity Log', icon: 'history', href: '/operator/activity' },
-    { label: 'Settings', icon: 'settings', href: '/operator/settings' },
-  ]
-
   return (
     <div className="flex min-h-screen bg-[#F7F7F5]">
-      {/* Dark sidebar */}
-      <aside className="w-60 shrink-0 bg-[#16181D] flex flex-col">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F59608]">
-              <span className="text-sm font-black text-white">T</span>
-            </div>
-            <span className="text-lg font-black text-white tracking-tight">tapley</span>
-          </div>
-          <span className="rounded-full bg-[#6D28F5] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-white">
-            OPERATOR
-          </span>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => (
-            <a
-              key={item.label}
-              href={item.href}
-              className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-                item.active ? 'bg-[#6D28F5] text-white' : 'text-white/50 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>{item.icon}</span>
-                {item.label}
-              </div>
-              {item.badge ? (
-                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">{item.badge}</span>
-              ) : null}
-            </a>
-          ))}
-        </nav>
-
-        <div className="p-4 space-y-3 border-t border-white/10">
-          <a
-            href="/operator/businesses/new"
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6D28F5] py-3 text-sm font-bold text-white hover:bg-[#5b21b6] transition-colors"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span>
-            NEW BUSINESS
-          </a>
-          <div className="flex items-center gap-2 px-1">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white">L</div>
-            <div>
-              <p className="text-xs font-semibold text-white">Luke Gunn</p>
-              <p className="text-[10px] text-white/40 uppercase tracking-widest">Operator</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <OperatorSidebar active="Overview" />
 
       {/* Main */}
       <main className="flex-1 p-8 overflow-auto">
@@ -157,7 +100,7 @@ export default function OperatorPage() {
                   <span className="text-[#A7A3A8]">·</span>
                   <span className="text-[#A7A3A8]">{alert.time}</span>
                 </div>
-                <button className="text-sm font-semibold text-[#6D28F5] hover:underline">Investigate</button>
+                <a href="/operator/alerts" className="text-sm font-semibold text-[#6D28F5] hover:underline">Investigate</a>
               </div>
             ))}
           </div>
