@@ -4,8 +4,8 @@ import { createServerClient } from '@supabase/ssr'
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // DEV BYPASS — remove before going live
-  if (process.env.NODE_ENV === 'development') return NextResponse.next()
+  // AUTH BYPASS — re-enable before go-live
+  return NextResponse.next()
 
   // Public routes — no auth required
   const publicPaths = ['/tap', '/register', '/status', '/redeem', '/staff', '/login', '/auth/callback', '/api/tap', '/api/register', '/api/redeem', '/api/confirm']
