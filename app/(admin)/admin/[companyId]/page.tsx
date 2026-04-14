@@ -208,20 +208,19 @@ export default function CompanyDetailPage() {
     const supabase = createClient()
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [companyResult, cardsResult, nfcResult, viewsTotalResult, views30dResult] = await Promise.all([
-      supabase
-        .from('companies')
-        .select(`
-          id, name, slug, logo_url, brand_primary_color, brand_secondary_color,
-          subscription_plan, subscription_status, subscription_ends_at, max_staff_cards,
-          created_at, website, tagline,
-          primary_contact_name, primary_contact_email, primary_contact_phone, primary_contact_whatsapp,
-          internal_notes, pricing_tier_id, rate_per_card_zar, setup_fee_per_card_zar,
-          min_cards_committed, contract_start_date, contract_end_date, next_billing_date,
-          onboarding_checklist
-        `)
-        .eq('id', companyId)
-        .single(),
+    const companyResult = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single()
+
+    if (companyResult.error || !companyResult.data) {
+      setLoadError('Company not found or access denied.')
+      setLoading(false)
+      return
+    }
+
+    const [cardsResult, nfcResult, viewsTotalResult, views30dResult] = await Promise.all([
       supabase
         .from('staff_cards')
         .select('id, full_name, job_title, department, photo_url, is_active, nfc_card_id, nfc_cards(slug)')
@@ -240,12 +239,6 @@ export default function CompanyDetailPage() {
         .select('staff_card_id')
         .gte('viewed_at', thirtyDaysAgo),
     ])
-
-    if (companyResult.error || !companyResult.data) {
-      setLoadError('Company not found or access denied.')
-      setLoading(false)
-      return
-    }
 
     // Cast embedded-join results to explicit local shapes — Supabase TS
     // inferencer doesn't resolve nfc_cards(slug) / staff_cards(full_name) selects.
