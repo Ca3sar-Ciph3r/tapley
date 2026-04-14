@@ -509,6 +509,32 @@ export async function deleteCompany(
     .eq('company_id', companyId)
   if (nfcError) return { error: `Failed to delete NFC cards: ${nfcError.message}` }
 
+  // 2b. Protect super_admin records from the company cascade.
+  //     Find any super_admins linked to this company and reassign them
+  //     to another company before deletion so they don't lose access.
+  const { data: superAdmins } = await supabaseAdmin
+    .from('company_admins')
+    .select('user_id')
+    .eq('company_id', companyId)
+    .eq('role', 'super_admin')
+
+  if (superAdmins && superAdmins.length > 0) {
+    const { data: otherCompany } = await supabaseAdmin
+      .from('companies')
+      .select('id')
+      .neq('id', companyId)
+      .limit(1)
+      .single()
+
+    if (otherCompany) {
+      await supabaseAdmin
+        .from('company_admins')
+        .update({ company_id: otherCompany.id })
+        .eq('company_id', companyId)
+        .eq('role', 'super_admin')
+    }
+  }
+
   // 3. Delete the company — cascades staff_cards, company_admins, contacts
   const { error: companyError } = await supabaseAdmin
     .from('companies')
