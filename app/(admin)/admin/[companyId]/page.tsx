@@ -540,7 +540,7 @@ export default function CompanyDetailPage() {
             )}
             {inviteSuccess && (
               <p className="text-xs text-teal-700 font-semibold">
-                ✓ Invite sent — they'll receive an email shortly.
+                ✓ Invite sent — they&apos;ll receive an email shortly.
               </p>
             )}
           </div>

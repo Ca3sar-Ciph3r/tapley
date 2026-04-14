@@ -713,7 +713,7 @@ export default function MyCardPage() {
                 WhatsApp Number
               </h2>
               <p className="text-xs text-slate-400 mb-3">
-                This can be your personal number — it's used for the WhatsApp CTA button on your card.
+                This can be your personal number — it&apos;s used for the WhatsApp CTA button on your card.
                 Format: 082 123 4567 or +27821234567
               </p>
               <input
@@ -812,7 +812,7 @@ export default function MyCardPage() {
                 Custom CTA Button
               </h2>
               <p className="text-xs text-slate-400 mb-4">
-                Optionally override the company's default call-to-action button on your card.
+                Optionally override the company&apos;s default call-to-action button on your card.
                 Leave blank to use the company default.
               </p>
               <div className="space-y-3">

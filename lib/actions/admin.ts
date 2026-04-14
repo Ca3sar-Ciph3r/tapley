@@ -244,7 +244,7 @@ export async function createCompany(
   const maxCards = PLAN_MAX_CARDS[plan] ?? 10
 
   // Derive slug from company name: lowercase, replace non-alphanumeric with hyphens
-  let baseSlug = name
+  const baseSlug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')

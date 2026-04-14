@@ -430,7 +430,7 @@ export default function SignaturePage() {
             ))}
           </ol>
           <p className="mt-4 text-xs text-slate-400 bg-blue-50 rounded-xl p-3">
-            <strong>Tip:</strong> The Outlook Web App (outlook.com or your company's OWA) supports HTML signatures much more reliably than the desktop app. If possible, set your signature there.
+            <strong>Tip:</strong> The Outlook Web App (outlook.com or your company&apos;s OWA) supports HTML signatures much more reliably than the desktop app. If possible, set your signature there.
           </p>
         </div>
 

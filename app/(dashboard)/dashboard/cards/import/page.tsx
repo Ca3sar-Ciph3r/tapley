@@ -421,7 +421,7 @@ function DoneStep({ result, onReset }: DoneStepProps) {
               <span className="material-symbols-outlined text-[18px] leading-none flex-shrink-0 mt-0.5">info</span>
               <p className="text-sm">
                 <strong>{result.cappedCount} row{result.cappedCount !== 1 ? 's' : ''}</strong> were not imported
-                because you reached your plan's staff card limit.
+                because you reached your plan&apos;s staff card limit.
                 Contact Tapley Connect to upgrade your plan.
               </p>
             </div>
