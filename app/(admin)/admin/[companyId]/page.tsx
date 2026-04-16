@@ -25,7 +25,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { startImpersonation, generateNfcBatch, updateNfcCardStatus, inviteCompanyAdmin } from '@/lib/actions/admin'
+import { startImpersonation, generateNfcBatch, updateNfcCardStatus, inviteCompanyAdmin, creditReferral, addBillingRecord, type BillingRecordType, type BillingRecordStatus, type AddBillingRecordInput } from '@/lib/actions/admin'
 import { sendMonthlyDigest, sendDay5Nudge, sendDay14Analytics } from '@/lib/actions/analytics'
 import { ClientInfoPanel } from './_components/ClientInfoPanel'
 import { BillingPanel } from './_components/BillingPanel'
@@ -168,6 +168,353 @@ function formatDate(iso: string) {
     month: '2-digit',
     year: 'numeric',
   })
+}
+
+// ---------------------------------------------------------------------------
+// ReferralsPanel — shows referrals for this company + credit button
+// ---------------------------------------------------------------------------
+
+type ReferralRow = {
+  id: string
+  referrer_company_id: string
+  referred_company_id: string
+  referrer_name: string
+  referred_name: string
+  status: string
+  credited_at: string | null
+  created_at: string
+}
+
+function ReferralsPanel({ companyId }: { companyId: string }) {
+  const [referrals, setReferrals] = useState<ReferralRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [crediting, setCrediting] = useState<string | null>(null)
+  const [creditResult, setCreditResult] = useState<Record<string, string>>({})
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const supabase = createClient()
+    const supabaseAny = supabase as any
+    // Fetch referrals where this company is the referrer OR the referred
+    const { data } = await supabaseAny
+      .from('referrals')
+      .select(`
+        id, referrer_company_id, referred_company_id, status, credited_at, created_at,
+        referrer:companies!referrals_referrer_company_id_fkey(name),
+        referred:companies!referrals_referred_company_id_fkey(name)
+      `)
+      .or(`referrer_company_id.eq.${companyId},referred_company_id.eq.${companyId}`)
+      .order('created_at', { ascending: false })
+
+    const rows: ReferralRow[] = (data ?? []).map((r: any) => ({
+      id: r.id,
+      referrer_company_id: r.referrer_company_id,
+      referred_company_id: r.referred_company_id,
+      referrer_name: Array.isArray(r.referrer) ? (r.referrer[0]?.name ?? 'Unknown') : (r.referrer?.name ?? 'Unknown'),
+      referred_name: Array.isArray(r.referred) ? (r.referred[0]?.name ?? 'Unknown') : (r.referred?.name ?? 'Unknown'),
+      status: r.status,
+      credited_at: r.credited_at,
+      created_at: r.created_at,
+    }))
+    setReferrals(rows)
+    setLoading(false)
+  }
+
+  async function handleCredit(referralId: string) {
+    setCrediting(referralId)
+    const { error } = await creditReferral(referralId)
+    setCreditResult(prev => ({ ...prev, [referralId]: error ?? 'credited' }))
+    if (!error) await load()
+    setCrediting(null)
+  }
+
+  const STATUS_STYLES: Record<string, string> = {
+    pending:  'bg-amber-50 text-amber-700',
+    qualified:'bg-sky-50 text-sky-700',
+    credited: 'bg-emerald-50 text-emerald-700',
+  }
+
+  if (loading) return null
+  if (referrals.length === 0) {
+    return (
+      <div className="glass-panel rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+        <h2 className="font-jakarta text-base font-bold text-slate-900 mb-1">Referrals</h2>
+        <p className="text-xs text-slate-400">No referrals linked to this company.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="glass-panel rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="px-8 py-5 border-b border-slate-100">
+        <h2 className="font-jakarta text-base font-bold text-slate-900">Referrals</h2>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Referrals this company made or received · {referrals.filter(r => r.status === 'pending').length} pending
+        </p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 bg-slate-50/40">
+            <th className="px-8 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Referrer</th>
+            <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Referred</th>
+            <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Date</th>
+            <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</th>
+            <th className="px-8 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-slate-400">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {referrals.map(r => (
+            <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
+              <td className="px-8 py-3">
+                <span className={`text-sm font-semibold ${r.referrer_company_id === companyId ? 'text-teal-700' : 'text-slate-700'}`}>
+                  {r.referrer_name}
+                  {r.referrer_company_id === companyId && <span className="ml-1 text-xs text-teal-500">(this company)</span>}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <span className={`text-sm font-semibold ${r.referred_company_id === companyId ? 'text-teal-700' : 'text-slate-700'}`}>
+                  {r.referred_name}
+                  {r.referred_company_id === companyId && <span className="ml-1 text-xs text-teal-500">(this company)</span>}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <span className="text-xs text-slate-400">{formatDate(r.created_at)}</span>
+              </td>
+              <td className="px-4 py-3">
+                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${STATUS_STYLES[r.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                  {r.status}
+                </span>
+              </td>
+              <td className="px-8 py-3 text-right">
+                {creditResult[r.id] === 'credited' ? (
+                  <span className="text-xs font-semibold text-teal-600">✓ Credited — 1 month free applied</span>
+                ) : creditResult[r.id] ? (
+                  <span className="text-xs text-red-500">{creditResult[r.id]}</span>
+                ) : r.status !== 'credited' ? (
+                  <button
+                    onClick={() => handleCredit(r.id)}
+                    disabled={crediting === r.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors disabled:opacity-40 ml-auto"
+                  >
+                    {crediting === r.id ? (
+                      <span className="material-symbols-outlined text-[14px] leading-none animate-spin">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[14px] leading-none">card_giftcard</span>
+                    )}
+                    {crediting === r.id ? 'Crediting…' : 'Credit 1 month free'}
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-400">{formatDate(r.credited_at ?? r.created_at)}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// BillingRecordsPanel — super admin billing ledger for this company
+// ---------------------------------------------------------------------------
+
+type BillingRecord = {
+  id: string
+  type: string
+  amount_zar: number
+  description: string | null
+  billing_date: string
+  status: string
+}
+
+const BILLING_TYPE_LABELS: Record<string, string> = {
+  monthly_fee:     'Monthly Fee',
+  setup_fee:       'Setup Fee',
+  referral_credit: 'Referral Credit',
+  manual_credit:   'Manual Credit',
+  payment:         'Payment',
+}
+
+function BillingRecordsPanel({ companyId }: { companyId: string }) {
+  const [records, setRecords] = useState<BillingRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    type: 'monthly_fee' as BillingRecordType,
+    amount: '',
+    description: '',
+    date: new Date().toISOString().slice(0, 10),
+    status: 'pending' as BillingRecordStatus,
+  })
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const supabase = createClient()
+    const supabaseAny = supabase as any
+    const { data } = await supabaseAny
+      .from('billing_records')
+      .select('id, type, amount_zar, description, billing_date, status')
+      .eq('company_id', companyId)
+      .order('billing_date', { ascending: false })
+    setRecords((data ?? []) as BillingRecord[])
+    setLoading(false)
+  }
+
+  async function handleAdd() {
+    if (!form.amount) { setAddError('Amount is required.'); return }
+    setSaving(true)
+    setAddError(null)
+    const input: AddBillingRecordInput = {
+      companyId,
+      type: form.type,
+      amountZar: parseFloat(form.amount),
+      description: form.description || undefined,
+      billingDate: form.date,
+      status: form.status,
+    }
+    const { error } = await addBillingRecord(input)
+    if (error) {
+      setAddError(error)
+    } else {
+      setShowAdd(false)
+      setForm({ type: 'monthly_fee', amount: '', description: '', date: new Date().toISOString().slice(0, 10), status: 'pending' })
+      await load()
+    }
+    setSaving(false)
+  }
+
+  const inputCls = 'w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400'
+
+  const totalBalance = records.reduce((sum, r) => {
+    const isCredit = r.type === 'referral_credit' || r.type === 'manual_credit' || r.type === 'payment'
+    return sum + (isCredit ? -r.amount_zar : r.amount_zar)
+  }, 0)
+
+  return (
+    <div className="glass-panel rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100">
+        <div>
+          <h2 className="font-jakarta text-base font-bold text-slate-900">Billing Records</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {records.length} record{records.length !== 1 ? 's' : ''} ·{' '}
+            <span className={totalBalance > 0 ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+              Balance: R {Math.abs(totalBalance).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+              {totalBalance <= 0 ? ' (paid up)' : ' outstanding'}
+            </span>
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAdd(v => !v)}
+          className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition-colors"
+        >
+          <span className="material-symbols-outlined text-[16px] leading-none">{showAdd ? 'close' : 'add'}</span>
+          {showAdd ? 'Cancel' : 'Add Record'}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="px-8 py-5 border-b border-slate-100 bg-slate-50/60 space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Type</label>
+              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as BillingRecordType }))} className={inputCls}>
+                {Object.entries(BILLING_TYPE_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Amount (ZAR)</label>
+              <input type="number" min="0" step="0.01" placeholder="0.00" value={form.amount}
+                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Date</label>
+              <input type="date" value={form.date}
+                onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as BillingRecordStatus }))} className={inputCls}>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="waived">Waived</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Description</label>
+            <input type="text" placeholder="e.g. April 2026 monthly fee" value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={inputCls} />
+          </div>
+          {addError && <p className="text-xs text-red-500">{addError}</p>}
+          <button onClick={handleAdd} disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50">
+            {saving ? <span className="material-symbols-outlined text-[16px] leading-none animate-spin">progress_activity</span>
+              : <span className="material-symbols-outlined text-[16px] leading-none">save</span>}
+            {saving ? 'Saving…' : 'Save Record'}
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="px-8 py-6 text-sm text-slate-400">Loading…</div>
+      ) : records.length === 0 ? (
+        <div className="px-8 py-6 text-sm text-slate-400">No billing records yet. Add the first one above.</div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/40">
+              <th className="px-8 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Date</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Type</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Description</th>
+              <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-slate-400">Amount</th>
+              <th className="px-8 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map(r => {
+              const isCredit = r.type === 'referral_credit' || r.type === 'manual_credit' || r.type === 'payment'
+              return (
+                <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
+                  <td className="px-8 py-3 text-xs text-slate-500">{formatDate(r.billing_date)}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-600">
+                      {BILLING_TYPE_LABELS[r.type] ?? r.type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 max-w-[200px]">
+                    <span className="text-xs text-slate-500 truncate block">{r.description ?? '—'}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`text-sm font-bold tabular-nums ${isCredit ? 'text-emerald-600' : 'text-slate-900'}`}>
+                      {isCredit ? '−' : ''}R {r.amount_zar.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                    </span>
+                  </td>
+                  <td className="px-8 py-3">
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                      r.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
+                      r.status === 'waived' ? 'bg-slate-100 text-slate-500' :
+                      'bg-amber-50 text-amber-700'
+                    }`}>
+                      {r.status}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -683,6 +1030,12 @@ export default function CompanyDetailPage() {
         }}
         activeCardCount={activeCards.length}
       />
+
+      {/* Referrals */}
+      <ReferralsPanel companyId={company.id} />
+
+      {/* Billing Records */}
+      <BillingRecordsPanel companyId={company.id} />
 
       {/* Onboarding Checklist */}
       <OnboardingChecklist

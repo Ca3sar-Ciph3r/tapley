@@ -20,6 +20,7 @@ import {
   type CardTemplate,
   type UpdateCompanyBrandingInput,
 } from '@/lib/actions/branding'
+import { getImpersonationState } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -299,8 +300,43 @@ export default function BrandingPage() {
       ? adminRecord.companies[0]
       : adminRecord.companies
 
+    // Super admin rows have company_id = NULL (migration 20260415000000).
+    // Fall back to the impersonation cookie to get the active company context.
     if (!companyRaw) {
-      setLoadError('Failed to load company settings.')
+      const impersonation = await getImpersonationState()
+      if (!impersonation?.companyId) {
+        setLoadError('No company selected. Go to Admin and start impersonating a company first.')
+        setLoading(false)
+        return
+      }
+      const supabaseAny = supabase as any
+      const { data: impersonatedCompany, error: impError } = await supabaseAny
+        .from('companies')
+        .select('id, name, tagline, website, logo_url, brand_primary_color, brand_secondary_color, brand_dark_mode, card_template, cta_label, cta_url')
+        .eq('id', impersonation.companyId)
+        .single()
+      if (impError || !impersonatedCompany) {
+        setLoadError('Failed to load company settings.')
+        setLoading(false)
+        return
+      }
+      const impCo = impersonatedCompany as CompanyRow
+      setCompanyId(impersonation.companyId)
+      setValues({
+        id: impCo.id,
+        name: impCo.name ?? '',
+        tagline: impCo.tagline ?? '',
+        website: impCo.website ?? '',
+        logo_url: impCo.logo_url ?? null,
+        brand_primary_color: impCo.brand_primary_color ?? '#16181D',
+        brand_secondary_color: impCo.brand_secondary_color ?? '#F59608',
+        brand_dark_mode: impCo.brand_dark_mode ?? true,
+        card_template: (impCo.card_template as CardTemplate) ?? 'minimal',
+        cta_label: impCo.cta_label ?? 'Send me a WhatsApp',
+        cta_url: impCo.cta_url ?? '',
+        logo_file: null,
+        logo_preview: null,
+      })
       setLoading(false)
       return
     }

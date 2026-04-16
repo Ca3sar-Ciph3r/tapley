@@ -83,11 +83,11 @@ export async function startImpersonation(
   if (!user) return { error: 'Unauthorised' }
 
   // Verify super_admin role
-  const { data: adminRecord } = await supabase
+  const { data: adminRecord } = await (supabase
     .from('company_admins')
     .select('role')
     .eq('user_id', user.id)
-    .single()
+    .single() as unknown as Promise<{ data: { role: string } | null }>)
 
   if (adminRecord?.role !== 'super_admin') {
     return { error: 'Access denied — super admin only.' }
@@ -255,11 +255,11 @@ export async function createCompany(
 
   if (!user) return { error: 'Unauthorised' }
 
-  const { data: adminRecord } = await supabase
+  const { data: adminRecord } = await (supabase
     .from('company_admins')
     .select('role')
     .eq('user_id', user.id)
-    .single()
+    .single() as unknown as Promise<{ data: { role: string } | null }>)
 
   if (adminRecord?.role !== 'super_admin') {
     return { error: 'Access denied — super admin only.' }
@@ -296,15 +296,17 @@ export async function createCompany(
 
   // Resolve referred_by_company_id from referral code cookie (if provided)
   let referredByCompanyId: string | null = null
+  let referrerCompanyName: string | null = null
   if (input.referredByCode?.trim()) {
     // referral_code column added in migration 20260415060000 — cast until types regenerated
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: referrer } = await (supabaseAdmin
       .from('companies')
-      .select('id')
+      .select('id, name')
       .eq('referral_code' as any, input.referredByCode.trim())
       .maybeSingle() as any)
-    referredByCompanyId = (referrer as { id: string } | null)?.id ?? null
+    referredByCompanyId = (referrer as { id: string; name: string } | null)?.id ?? null
+    referrerCompanyName = (referrer as { id: string; name: string } | null)?.name ?? null
   }
 
   // Insert the company record with all onboarding fields.
@@ -377,7 +379,7 @@ export async function createCompany(
 
   // Insert referrals row if this company was referred.
   // referrals table added in migration 20260415060000 — use adminAny until types regenerated.
-  if (referredByCompanyId) {
+  if (referredByCompanyId && referrerCompanyName) {
     const { error: referralError } = await adminAny
       .from('referrals')
       .insert({
@@ -390,6 +392,58 @@ export async function createCompany(
       // Non-fatal: log but don't fail company creation
       // eslint-disable-next-line no-console
       console.error('[createCompany] referrals insert failed:', referralError.message)
+    } else {
+      // Notify super admin that a referral has been recorded
+      const notifyEmail = process.env.SUPER_ADMIN_NOTIFY_EMAIL
+      if (notifyEmail) {
+        try {
+          const { getResend, FROM_ADDRESS } = await import('@/lib/email/resend')
+          await getResend().emails.send({
+            from: FROM_ADDRESS,
+            to: notifyEmail,
+            subject: `New referral: ${referrerCompanyName} referred ${name}`,
+            html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family:sans-serif;color:#1e293b;max-width:600px;margin:0 auto;padding:32px 24px;">
+  <h1 style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:8px;">
+    New Referral Recorded
+  </h1>
+  <p style="color:#475569;margin-bottom:24px;">
+    A new company was created via a referral link.
+  </p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+    <tr>
+      <td style="padding:10px 0;font-size:13px;color:#64748b;width:40%;">Referring company</td>
+      <td style="padding:10px 0;font-size:13px;font-weight:700;color:#0f172a;">${referrerCompanyName}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;">New company</td>
+      <td style="padding:10px 0;font-size:13px;font-weight:700;color:#0f172a;">${name}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;">Referral code used</td>
+      <td style="padding:10px 0;font-size:13px;font-family:monospace;color:#0d9488;">${input.referredByCode?.trim()}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;">Status</td>
+      <td style="padding:10px 0;font-size:13px;color:#d97706;font-weight:600;">Pending — mark as credited once ${name} goes live</td>
+    </tr>
+  </table>
+  <a href="${process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'}/admin"
+     style="display:inline-block;padding:12px 24px;background:#0d9488;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">
+    View in Admin Panel →
+  </a>
+  <hr style="margin:40px 0;border:none;border-top:1px solid #e2e8f0;" />
+  <p style="font-size:12px;color:#94a3b8;">Tapley Connect · Super Admin Notification</p>
+</body>
+</html>`,
+          })
+        } catch {
+          // Non-fatal — notification failure must not block company creation
+        }
+      }
     }
   }
 
@@ -458,11 +512,11 @@ export async function generateNfcBatch(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorised' }
 
-  const { data: adminRecord } = await supabase
+  const { data: adminRecord } = await (supabase
     .from('company_admins')
     .select('role')
     .eq('user_id', user.id)
-    .single()
+    .single() as unknown as Promise<{ data: { role: string } | null }>)
 
   if (adminRecord?.role !== 'super_admin') {
     return { error: 'Access denied — super admin only.' }
@@ -728,6 +782,53 @@ export async function markOrderDelivered(
 }
 
 // ---------------------------------------------------------------------------
+// updateCardOrder
+//
+// Edits any editable field on a card_orders row.
+// Super admin only.
+// ---------------------------------------------------------------------------
+
+export type CardOrderStatus = 'pending' | 'ordered' | 'printing' | 'shipped' | 'delivered'
+
+export type UpdateCardOrderInput = {
+  status?: CardOrderStatus
+  quantity?: number
+  order_date?: string | null
+  estimated_delivery?: string | null
+  tracking_number?: string | null
+  total_cost?: number | null
+  notes?: string | null
+  actual_delivery?: string | null
+}
+
+export async function updateCardOrder(
+  orderId: string,
+  updates: UpdateCardOrderInput,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  const { data: adminRecord } = await supabase
+    .from('company_admins').select('role').eq('user_id', user.id).single()
+  if (adminRecord?.role !== 'super_admin') return { error: 'Access denied — super admin only.' }
+
+  // If status is being set to 'delivered' and no actual_delivery provided, set it now.
+  const patch: UpdateCardOrderInput = { ...updates }
+  if (patch.status === 'delivered' && !patch.actual_delivery) {
+    patch.actual_delivery = new Date().toISOString()
+  }
+
+  const adminAny = supabaseAdmin as any
+  const { error } = await adminAny
+    .from('card_orders')
+    .update(patch)
+    .eq('id', orderId)
+
+  return { error: error?.message }
+}
+
+// ---------------------------------------------------------------------------
 // updateNfcCardStatus
 //
 // Updates the order_status of a single NFC card.
@@ -755,6 +856,116 @@ export async function updateNfcCardStatus(
     .from('nfc_cards')
     .update(update)
     .eq('id', nfcCardId)
+
+  return { error: error?.message }
+}
+
+// ---------------------------------------------------------------------------
+// creditReferral
+//
+// Marks a referral as 'credited', increments the referrer's free_months_balance,
+// and inserts a referral_credit billing record. Super admin only.
+// ---------------------------------------------------------------------------
+
+export async function creditReferral(
+  referralId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  const { data: adminRecord } = await (supabase
+    .from('company_admins')
+    .select('role')
+    .eq('user_id', user.id)
+    .single() as unknown as Promise<{ data: { role: string } | null }>)
+  if (adminRecord?.role !== 'super_admin') return { error: 'Access denied.' }
+
+  const adminAny = supabaseAdmin as any
+
+  // Fetch referral to get referrer
+  const { data: referral, error: fetchError } = await adminAny
+    .from('referrals')
+    .select('id, referrer_company_id, referred_company_id, status, companies!referrals_referred_company_id_fkey(name)')
+    .eq('id', referralId)
+    .single()
+
+  if (fetchError || !referral) return { error: 'Referral not found.' }
+  if (referral.status === 'credited') return { error: 'Already credited.' }
+
+  const referredName = Array.isArray(referral.companies)
+    ? (referral.companies[0]?.name ?? 'Unknown')
+    : (referral.companies?.name ?? 'Unknown')
+
+  // Mark referral as credited
+  const { error: updateError } = await adminAny
+    .from('referrals')
+    .update({ status: 'credited', credited_at: new Date().toISOString() })
+    .eq('id', referralId)
+  if (updateError) return { error: updateError.message }
+
+  // Increment free_months_balance on the referrer company via RPC
+  // (avoids read-modify-write race — SQL function does atomic update)
+  await adminAny.rpc('increment_free_months', { company_id_arg: referral.referrer_company_id })
+
+  // Insert a billing record for the credit
+  await adminAny
+    .from('billing_records')
+    .insert({
+      company_id: referral.referrer_company_id,
+      type: 'referral_credit',
+      amount_zar: 0,
+      description: `1 month free — referred ${referredName}`,
+      billing_date: new Date().toISOString().slice(0, 10),
+      status: 'paid',
+    })
+
+  return {}
+}
+
+// ---------------------------------------------------------------------------
+// addBillingRecord
+//
+// Super admin manually adds a charge or credit to a company's billing ledger.
+// ---------------------------------------------------------------------------
+
+export type BillingRecordType = 'monthly_fee' | 'setup_fee' | 'referral_credit' | 'manual_credit' | 'payment'
+export type BillingRecordStatus = 'pending' | 'paid' | 'waived'
+
+export type AddBillingRecordInput = {
+  companyId: string
+  type: BillingRecordType
+  amountZar: number
+  description?: string
+  billingDate: string   // YYYY-MM-DD
+  status: BillingRecordStatus
+}
+
+export async function addBillingRecord(
+  input: AddBillingRecordInput,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  const { data: adminRecord } = await (supabase
+    .from('company_admins')
+    .select('role')
+    .eq('user_id', user.id)
+    .single() as unknown as Promise<{ data: { role: string } | null }>)
+  if (adminRecord?.role !== 'super_admin') return { error: 'Access denied.' }
+
+  const adminAny = supabaseAdmin as any
+  const { error } = await adminAny
+    .from('billing_records')
+    .insert({
+      company_id: input.companyId,
+      type: input.type,
+      amount_zar: input.amountZar,
+      description: input.description ?? null,
+      billing_date: input.billingDate,
+      status: input.status,
+    })
 
   return { error: error?.message }
 }
