@@ -32,8 +32,11 @@ type BillingRecord = {
 
 type PlanSummary = {
   companyName: string
-  monthlyFeeZar: number | null
+  subscriptionPlan: string
+  ratePerCardZar: number | null
+  maxStaffCards: number
   billingCycle: string
+  nextBillingDate: string | null
   freeMonthsBalance: number
   subscriptionStatus: string
 }
@@ -140,7 +143,7 @@ export default function BillingPage() {
     // Fetch company plan details
     const { data: company, error: companyError } = await supabaseAny
       .from('companies')
-      .select('name, monthly_fee_zar, billing_cycle, free_months_balance, subscription_status')
+      .select('name, subscription_plan, subscription_status, rate_per_card_zar, max_staff_cards, next_billing_date, billing_cycle, free_months_balance')
       .eq('id', companyId)
       .single()
 
@@ -152,8 +155,11 @@ export default function BillingPage() {
 
     setPlan({
       companyName: company.name,
-      monthlyFeeZar: company.monthly_fee_zar ?? null,
+      subscriptionPlan: company.subscription_plan ?? 'starter',
+      ratePerCardZar: company.rate_per_card_zar ?? null,
+      maxStaffCards: company.max_staff_cards ?? 0,
       billingCycle: company.billing_cycle ?? 'monthly',
+      nextBillingDate: company.next_billing_date ?? null,
       freeMonthsBalance: company.free_months_balance ?? 0,
       subscriptionStatus: company.subscription_status ?? 'active',
     })
@@ -207,16 +213,18 @@ export default function BillingPage() {
           {/* Plan summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="glass-panel rounded-2xl px-5 py-4 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Monthly Fee</p>
-              <p className="text-xl font-bold font-jakarta text-slate-900">
-                {plan.monthlyFeeZar !== null
-                  ? `R ${plan.monthlyFeeZar.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
-                  : '—'}
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Plan</p>
+              <p className="text-xl font-bold font-jakarta text-slate-900 capitalize">{plan.subscriptionPlan}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{plan.maxStaffCards} cards max</p>
             </div>
             <div className="glass-panel rounded-2xl px-5 py-4 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Billing Cycle</p>
-              <p className="text-xl font-bold font-jakarta text-slate-900 capitalize">{plan.billingCycle}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Rate / Card</p>
+              <p className="text-xl font-bold font-jakarta text-slate-900">
+                {plan.ratePerCardZar !== null
+                  ? `R ${plan.ratePerCardZar.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+                  : '—'}
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5 capitalize">{plan.billingCycle}</p>
             </div>
             <div className={`glass-panel rounded-2xl px-5 py-4 shadow-sm ${plan.freeMonthsBalance > 0 ? 'ring-1 ring-teal-200' : ''}`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Free Months</p>
@@ -230,6 +238,9 @@ export default function BillingPage() {
             <div className="glass-panel rounded-2xl px-5 py-4 shadow-sm">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Status</p>
               <p className="text-xl font-bold font-jakarta text-slate-900 capitalize">{plan.subscriptionStatus}</p>
+              {plan.nextBillingDate && (
+                <p className="text-xs text-slate-400 mt-0.5">Next: {formatDate(plan.nextBillingDate)}</p>
+              )}
             </div>
           </div>
 
