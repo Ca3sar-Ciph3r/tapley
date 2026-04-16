@@ -6,15 +6,16 @@
 // Captures ?ref=<code> query param and stores it as a cookie so createCompany
 // can credit the referring company when the admin signs up.
 //
-// Must be a client component to read searchParams before redirecting.
+// useSearchParams() must be wrapped in <Suspense> — Next.js 15 requirement
+// for any component that calls useSearchParams() at the page level.
 
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 const REF_COOKIE = 'tapley_ref'
 const REF_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 
-export default function RootPage() {
+function RefCaptureAndRedirect() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -27,6 +28,13 @@ export default function RootPage() {
     router.replace('/login')
   }, [router, searchParams])
 
-  // Render nothing — the redirect fires immediately on mount
   return null
+}
+
+export default function RootPage() {
+  return (
+    <Suspense>
+      <RefCaptureAndRedirect />
+    </Suspense>
+  )
 }
