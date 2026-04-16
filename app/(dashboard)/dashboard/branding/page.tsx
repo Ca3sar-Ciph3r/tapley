@@ -891,6 +891,7 @@ export default function BrandingPage() {
               ctaUrl={values.cta_url}
               photoSrc={null}
               company={previewCompany}
+              cardTemplate={values.card_template}
             />
           </div>
         )}

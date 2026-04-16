@@ -224,21 +224,21 @@ export type Database = {
       }
       company_admins: {
         Row: {
-          company_id: string
+          company_id: string | null
           created_at: string
           id: string
           role: string
           user_id: string
         }
         Insert: {
-          company_id: string
+          company_id?: string | null
           created_at?: string
           id?: string
           role?: string
           user_id: string
         }
         Update: {
-          company_id?: string
+          company_id?: string | null
           created_at?: string
           id?: string
           role?: string

@@ -38,6 +38,10 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
+  // Impersonation state must be resolved first — it overrides the company context
+  // for the sidebar and all write operations while active.
+  const impersonation = await getImpersonationState()
+
   // Step 1: Check if this user is a company admin or super admin
   const { data: adminRecord } = await supabase
     .from('company_admins')
@@ -48,7 +52,12 @@ export default async function DashboardLayout({
   let role: 'admin' | 'super_admin' | 'staff' = 'staff'
   let companyName = 'Tapley Connect'
 
-  if (adminRecord) {
+  if (impersonation?.companyId) {
+    // Super admin impersonating: show the impersonated company name in the sidebar
+    // so the context matches what write operations will use.
+    role = 'super_admin'
+    companyName = impersonation.companyName
+  } else if (adminRecord) {
     role = adminRecord.role as 'admin' | 'super_admin'
     const company = Array.isArray(adminRecord.companies)
       ? adminRecord.companies[0]
@@ -76,10 +85,6 @@ export default async function DashboardLayout({
     (user.user_metadata?.full_name as string | undefined) ??
     user.email?.split('@')[0] ??
     'User'
-
-  // Check if the super admin is currently impersonating a company.
-  // This is an httpOnly cookie set by startImpersonation() and cleared by stopImpersonation().
-  const impersonation = await getImpersonationState()
 
   return (
     <div className="mesh-gradient min-h-screen flex">

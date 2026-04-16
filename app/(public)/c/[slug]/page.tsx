@@ -81,7 +81,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const { data: nfcCard } = await supabaseAdmin
     .from('nfc_cards')
-    .select('id')
+    .select('id, company_id')
     .eq('slug', slug)
     .single()
 
@@ -91,6 +91,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .from('staff_cards')
     .select('full_name, job_title, photo_url, companies(name, logo_url)')
     .eq('nfc_card_id', nfcCard.id)
+    .eq('company_id', nfcCard.company_id)
     .eq('is_active', true)
     .single()
 
@@ -145,7 +146,11 @@ export default async function CardPage({ params }: PageProps) {
     )
   }
 
-  // Step 3: Find active staff card joined with company branding
+  // Step 3: Find active staff card joined with company branding.
+  // The company_id filter is a defense-in-depth guard: the FK join already scopes
+  // branding to the staff card's own company, but this ensures a data-integrity
+  // anomaly (staff card under a different company_id) can never leak another
+  // company's branding onto this page.
   const staffCardResult = await supabaseAdmin
     .from('staff_cards')
     .select(`
@@ -156,6 +161,7 @@ export default async function CardPage({ params }: PageProps) {
       )
     `)
     .eq('nfc_card_id', nfcCard.id)
+    .eq('company_id', nfcCard.company_id)
     .eq('is_active', true)
     .single()
 
@@ -205,6 +211,274 @@ export default async function CardPage({ params }: PageProps) {
 
   const socialLinks = parseSocialLinks(staffCard.social_links)
 
+  const cardTemplate = company?.card_template ?? 'minimal'
+
+  // ── bold template ─────────────────────────────────────────────────────────
+  if (cardTemplate === 'bold') {
+    return (
+      <main className="min-h-screen bg-white">
+        <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
+        <div className="mx-auto max-w-sm pb-4">
+
+          {/* Hero — full-bleed primary colour: logo + photo + name + title */}
+          <div style={{ backgroundColor: primaryColor }}>
+            <header className="flex items-center justify-center px-6 pt-10 pb-5">
+              {company?.logo_url ? (
+                <div className="relative h-10 w-36">
+                  <Image
+                    src={company.logo_url}
+                    alt={company.name}
+                    fill
+                    className="object-contain"
+                    priority
+                  />
+                </div>
+              ) : (
+                <p className="text-sm font-semibold tracking-wide" style={{ color: textSecondary }}>
+                  {company?.name ?? ''}
+                </p>
+              )}
+            </header>
+
+            <section className="px-6 pb-10 text-center">
+              {/* Profile photo */}
+              <div
+                className="mx-auto mb-5 h-28 w-28 rounded-full p-0.5"
+                style={{ background: secondaryColor }}
+              >
+                <div className="h-full w-full overflow-hidden rounded-full">
+                  {staffCard.photo_url ? (
+                    <Image
+                      src={staffCard.photo_url}
+                      alt={staffCard.full_name}
+                      width={112}
+                      height={112}
+                      className="h-full w-full object-cover"
+                      priority
+                    />
+                  ) : (
+                    <div
+                      className="flex h-full w-full items-center justify-center text-3xl font-bold"
+                      style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : primaryColor, color: '#ffffff' }}
+                    >
+                      {staffCard.full_name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Name */}
+              <h1 className="mb-1 text-2xl font-bold tracking-tight" style={{ color: textPrimary }}>
+                {staffCard.full_name}
+              </h1>
+              {/* Job title */}
+              <p className="mb-1 text-base font-medium" style={{ color: textSecondary }}>
+                {staffCard.job_title}
+              </p>
+              {(staffCard.department || company?.name) && (
+                <p className="text-sm" style={{ color: textSecondary }}>
+                  {[staffCard.department, company?.name].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </section>
+
+            {/* Curved divider — transitions from primary to white */}
+            <div className="relative" style={{ backgroundColor: primaryColor }}>
+              <svg
+                viewBox="0 0 100 20"
+                className="w-full block"
+                preserveAspectRatio="none"
+                style={{ height: 24, display: 'block' }}
+              >
+                <path d="M0,20 Q50,0 100,20 L100,20 L0,20 Z" fill="white" />
+              </svg>
+            </div>
+          </div>
+
+          {/* White lower section — bio, contact, socials, CTAs */}
+          <div className="bg-white px-6 pb-2">
+            {staffCard.bio && (
+              <p className="mb-5 text-center text-sm leading-relaxed text-slate-500">{staffCard.bio}</p>
+            )}
+            {!staffCard.bio && company?.tagline && (
+              <p className="mb-5 text-center text-sm leading-relaxed italic text-slate-400">{company.tagline}</p>
+            )}
+
+            {((staffCard.show_phone && staffCard.phone) || (staffCard.show_email && staffCard.email)) && (
+              <section className="space-y-2.5 pb-6">
+                {staffCard.show_phone && staffCard.phone && (
+                  <a href={`tel:${staffCard.phone}`} className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-opacity active:opacity-70" style={{ backgroundColor: '#F9FAFB', color: '#111827' }}>
+                    <PhoneIcon color={secondaryColor} />
+                    <span className="text-sm font-medium">{staffCard.phone}</span>
+                  </a>
+                )}
+                {staffCard.show_email && staffCard.email && (
+                  <a href={`mailto:${staffCard.email}`} className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-opacity active:opacity-70" style={{ backgroundColor: '#F9FAFB', color: '#111827' }}>
+                    <EmailIcon color={secondaryColor} />
+                    <span className="text-sm font-medium">{staffCard.email}</span>
+                  </a>
+                )}
+              </section>
+            )}
+
+            {hasSocialLinks(socialLinks) && (
+              <section className="pb-6">
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  {socialLinks.linkedin && <SocialIconLink href={socialLinks.linkedin} label="LinkedIn" bg="rgba(0,0,0,0.06)" color="#6B7280"><LinkedInIcon /></SocialIconLink>}
+                  {socialLinks.instagram && <SocialIconLink href={socialLinks.instagram} label="Instagram" bg="rgba(0,0,0,0.06)" color="#6B7280"><InstagramIcon /></SocialIconLink>}
+                  {socialLinks.twitter && <SocialIconLink href={socialLinks.twitter} label="Twitter / X" bg="rgba(0,0,0,0.06)" color="#6B7280"><TwitterIcon /></SocialIconLink>}
+                  {socialLinks.facebook && <SocialIconLink href={socialLinks.facebook} label="Facebook" bg="rgba(0,0,0,0.06)" color="#6B7280"><FacebookIcon /></SocialIconLink>}
+                  {socialLinks.website && <SocialIconLink href={socialLinks.website} label="Website" bg="rgba(0,0,0,0.06)" color="#6B7280"><GlobeIcon /></SocialIconLink>}
+                  {socialLinks.calendly && <SocialIconLink href={socialLinks.calendly} label="Book a meeting" bg="rgba(0,0,0,0.06)" color="#6B7280"><CalendarIcon /></SocialIconLink>}
+                </div>
+              </section>
+            )}
+          </div>
+
+          <CardActions
+            nfcCardId={nfcCard.id}
+            waUrl={waUrl}
+            slug={slug}
+            ctaLabel={ctaLabel}
+            customCtaLabel={showCustomCta ? ctaLabel : null}
+            customCtaUrl={showCustomCta ? customCtaUrl : null}
+            secondaryColor={secondaryColor}
+            isDark={false}
+          />
+        </div>
+      </main>
+    )
+  }
+
+  // ── split template ────────────────────────────────────────────────────────
+  if (cardTemplate === 'split') {
+    return (
+      <main className="min-h-screen bg-white">
+        <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
+
+        {/* Company logo — full width header */}
+        <header
+          className="flex items-center justify-center px-6 py-5"
+          style={{ backgroundColor: primaryColor }}
+        >
+          {company?.logo_url ? (
+            <div className="relative h-9 w-32">
+              <Image
+                src={company.logo_url}
+                alt={company.name}
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+          ) : (
+            <p className="text-sm font-semibold tracking-wide" style={{ color: textSecondary }}>
+              {company?.name ?? ''}
+            </p>
+          )}
+        </header>
+
+        {/* Mobile: stacked. md+: two-column */}
+        <div className="md:flex md:min-h-[calc(100vh-68px)]">
+
+          {/* Left column — brand colour, photo + name + title */}
+          <div
+            className="flex flex-col items-center justify-center px-8 py-10 md:w-[42%]"
+            style={{ backgroundColor: primaryColor }}
+          >
+            <div
+              className="mb-5 h-28 w-28 rounded-full p-0.5"
+              style={{ background: secondaryColor }}
+            >
+              <div className="h-full w-full overflow-hidden rounded-full">
+                {staffCard.photo_url ? (
+                  <Image
+                    src={staffCard.photo_url}
+                    alt={staffCard.full_name}
+                    width={112}
+                    height={112}
+                    className="h-full w-full object-cover"
+                    priority
+                  />
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center text-3xl font-bold"
+                    style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : primaryColor, color: '#ffffff' }}
+                  >
+                    {staffCard.full_name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+            </div>
+            <h1 className="text-xl font-bold text-center tracking-tight" style={{ color: textPrimary }}>
+              {staffCard.full_name}
+            </h1>
+            <p className="mt-1 text-sm font-medium text-center" style={{ color: textSecondary }}>
+              {staffCard.job_title}
+            </p>
+            {(staffCard.department || company?.name) && (
+              <p className="mt-1 text-xs text-center" style={{ color: textSecondary }}>
+                {[staffCard.department, company?.name].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+
+          {/* Right column — white, contact details + socials + CTAs */}
+          <div className="bg-white flex-1 px-6 py-8">
+            {staffCard.bio && (
+              <p className="mb-5 text-sm leading-relaxed text-slate-500">{staffCard.bio}</p>
+            )}
+            {!staffCard.bio && company?.tagline && (
+              <p className="mb-5 text-sm leading-relaxed italic text-slate-400">{company.tagline}</p>
+            )}
+
+            {((staffCard.show_phone && staffCard.phone) || (staffCard.show_email && staffCard.email)) && (
+              <section className="space-y-2.5 pb-6">
+                {staffCard.show_phone && staffCard.phone && (
+                  <a href={`tel:${staffCard.phone}`} className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-opacity active:opacity-70" style={{ backgroundColor: '#F9FAFB', color: '#111827' }}>
+                    <PhoneIcon color={primaryColor} />
+                    <span className="text-sm font-medium">{staffCard.phone}</span>
+                  </a>
+                )}
+                {staffCard.show_email && staffCard.email && (
+                  <a href={`mailto:${staffCard.email}`} className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-opacity active:opacity-70" style={{ backgroundColor: '#F9FAFB', color: '#111827' }}>
+                    <EmailIcon color={primaryColor} />
+                    <span className="text-sm font-medium">{staffCard.email}</span>
+                  </a>
+                )}
+              </section>
+            )}
+
+            {hasSocialLinks(socialLinks) && (
+              <section className="pb-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  {socialLinks.linkedin && <SocialIconLink href={socialLinks.linkedin} label="LinkedIn" bg="rgba(0,0,0,0.06)" color="#6B7280"><LinkedInIcon /></SocialIconLink>}
+                  {socialLinks.instagram && <SocialIconLink href={socialLinks.instagram} label="Instagram" bg="rgba(0,0,0,0.06)" color="#6B7280"><InstagramIcon /></SocialIconLink>}
+                  {socialLinks.twitter && <SocialIconLink href={socialLinks.twitter} label="Twitter / X" bg="rgba(0,0,0,0.06)" color="#6B7280"><TwitterIcon /></SocialIconLink>}
+                  {socialLinks.facebook && <SocialIconLink href={socialLinks.facebook} label="Facebook" bg="rgba(0,0,0,0.06)" color="#6B7280"><FacebookIcon /></SocialIconLink>}
+                  {socialLinks.website && <SocialIconLink href={socialLinks.website} label="Website" bg="rgba(0,0,0,0.06)" color="#6B7280"><GlobeIcon /></SocialIconLink>}
+                  {socialLinks.calendly && <SocialIconLink href={socialLinks.calendly} label="Book a meeting" bg="rgba(0,0,0,0.06)" color="#6B7280"><CalendarIcon /></SocialIconLink>}
+                </div>
+              </section>
+            )}
+
+            <CardActions
+              nfcCardId={nfcCard.id}
+              waUrl={waUrl}
+              slug={slug}
+              ctaLabel={ctaLabel}
+              customCtaLabel={showCustomCta ? ctaLabel : null}
+              customCtaUrl={showCustomCta ? customCtaUrl : null}
+              secondaryColor={secondaryColor}
+              isDark={false}
+            />
+          </div>
+
+        </div>
+      </main>
+    )
+  }
+
+  // ── minimal template (default) ────────────────────────────────────────────
   return (
     <main
       className="min-h-screen"

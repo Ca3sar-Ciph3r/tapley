@@ -15,6 +15,7 @@
 // Returns a per-row result so the UI can show exactly what happened.
 
 import { createClient } from '@/lib/supabase/server'
+import { getImpersonationState } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,17 +60,38 @@ export async function bulkImportStaffCards(
   if (!user) return { error: 'Unauthorised' }
 
   // --- Resolve company ---
-  const { data: adminRecord } = await supabase
-    .from('company_admins')
-    .select('company_id')
-    .eq('user_id', user.id)
-    .single()
+  // When the super admin is impersonating, the cookie holds the target company_id.
+  // Falling back to company_admins without this check creates cards under the wrong
+  // company and causes branding to bleed through on the public card page.
+  const impersonation = await getImpersonationState()
 
-  if (!adminRecord?.company_id) {
-    return { error: 'No company found for this account.' }
+  let companyId: string
+
+  if (impersonation?.companyId) {
+    const { data: superAdminRecord } = await supabase
+      .from('company_admins')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (superAdminRecord?.role !== 'super_admin') {
+      return { error: 'Unauthorised' }
+    }
+
+    companyId = impersonation.companyId
+  } else {
+    const { data: adminRecord } = await supabase
+      .from('company_admins')
+      .select('company_id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!adminRecord?.company_id) {
+      return { error: 'No company found for this account.' }
+    }
+
+    companyId = adminRecord.company_id
   }
-
-  const companyId = adminRecord.company_id
 
   // --- Enforce max_staff_cards plan limit ---
   const [companyResult, countResult] = await Promise.all([

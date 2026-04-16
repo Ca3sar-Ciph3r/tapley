@@ -15,6 +15,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
+import { getImpersonationState } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // deactivateStaffCard
@@ -92,18 +93,45 @@ export async function createStaffCard(
 
   if (!user) return { error: 'Unauthorised' }
 
-  // Resolve this admin's company_id (RLS on company_admins enforces visibility)
-  const { data: adminRecord } = await supabase
-    .from('company_admins')
-    .select('company_id')
-    .eq('user_id', user.id)
-    .single()
+  // Resolve this admin's company_id.
+  //
+  // When the super admin is impersonating a company, the impersonation cookie
+  // holds the target company_id. We must use that — NOT the super admin's own
+  // company_admins row — otherwise staff cards are created under the wrong
+  // company (Tapley Connect) and that company's branding appears on the card page.
+  //
+  // For normal company admins (no impersonation), fall back to company_admins lookup.
+  const impersonation = await getImpersonationState()
 
-  if (!adminRecord?.company_id) {
-    return { error: 'No company found for this account.' }
+  let companyId: string
+
+  if (impersonation?.companyId) {
+    // Super admin impersonating: verify the caller really is super_admin
+    const { data: superAdminRecord } = await supabase
+      .from('company_admins')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (superAdminRecord?.role !== 'super_admin') {
+      return { error: 'Unauthorised' }
+    }
+
+    companyId = impersonation.companyId
+  } else {
+    // Normal company admin path
+    const { data: adminRecord } = await supabase
+      .from('company_admins')
+      .select('company_id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!adminRecord?.company_id) {
+      return { error: 'No company found for this account.' }
+    }
+
+    companyId = adminRecord.company_id
   }
-
-  const companyId = adminRecord.company_id
 
   // Normalise phone numbers to E.164 (+27...)
   const phone = input.phone.trim() ? normalisePhoneNumber(input.phone.trim()) : null
@@ -377,11 +405,19 @@ export type UpdateStaffCardInput = {
     website?: string
     calendly?: string
   }
-  cta_label: string
-  cta_url: string
+  // cta_label / cta_url are intentionally optional here.
+  // The admin edit UI no longer exposes these fields so they are omitted from
+  // the submitted input. When absent the update preserves whatever value is
+  // already stored in the database (company default applies on the card page).
+  cta_label?: string
+  cta_url?: string
   wa_notify_enabled: boolean
   show_optin_form: boolean
-  photo_url: string | null
+  // Optional: only include when the photo was explicitly changed.
+  // undefined  → preserve the existing DB value (no photo action taken)
+  // null       → user explicitly removed their photo
+  // string     → user uploaded a new photo; value is the new public URL
+  photo_url?: string | null
 }
 
 export async function updateStaffCard(
@@ -422,6 +458,20 @@ export async function updateStaffCard(
     }
   }
 
+  // Build update payload. photo_url is optional: only include it when the
+  // caller explicitly changed the photo (upload or remove). Omitting it
+  // preserves whatever value is currently stored in the database so a plain
+  // "save other fields" action can never accidentally clear a photo.
+  const photoUpdate = 'photo_url' in input ? { photo_url: input.photo_url } : {}
+
+  // cta_label / cta_url are only written when present in the input.
+  // The admin edit UI no longer exposes these fields — omitting them here
+  // preserves any existing per-card overrides already stored in the database.
+  const ctaUpdate = {
+    ...(typeof input.cta_label !== 'undefined' ? { cta_label: input.cta_label.trim() || null } : {}),
+    ...(typeof input.cta_url !== 'undefined' ? { cta_url: input.cta_url.trim() || null } : {}),
+  }
+
   const { error } = await supabase
     .from('staff_cards')
     .update({
@@ -435,11 +485,10 @@ export async function updateStaffCard(
       show_phone: input.show_phone,
       show_email: input.show_email,
       social_links: socialLinks,
-      cta_label: input.cta_label.trim() || null,
-      cta_url: input.cta_url.trim() || null,
+      ...ctaUpdate,
       wa_notify_enabled: input.wa_notify_enabled,
       show_optin_form: input.show_optin_form,
-      photo_url: input.photo_url,
+      ...photoUpdate,
       updated_at: new Date().toISOString(),
     })
     .eq('id', staffCardId)

@@ -27,8 +27,6 @@ import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
 export type UpdateOwnStaffCardInput = {
   bio: string
   whatsapp_number: string
-  show_phone: boolean
-  show_email: boolean
   wa_notify_enabled: boolean
   social_links: {
     linkedin?: string
@@ -38,9 +36,11 @@ export type UpdateOwnStaffCardInput = {
     website?: string
     calendly?: string
   }
-  cta_label: string
-  cta_url: string
-  photo_url: string | null
+  // Optional: only include when the photo was explicitly changed.
+  // undefined  → preserve the existing DB value (no photo action taken)
+  // null       → user explicitly removed their photo
+  // string     → user uploaded a new photo; value is the new public URL
+  photo_url?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -87,21 +87,24 @@ export async function updateOwnStaffCard(
     if (val && val.trim()) socialLinks[key] = val.trim()
   }
 
+  // Build update payload. photo_url is optional: only include it when the
+  // caller explicitly changed the photo (upload or remove). Omitting it
+  // preserves whatever value is currently stored in the database so a plain
+  // "save other fields" action can never accidentally clear a photo.
+  const photoUpdate = 'photo_url' in input ? { photo_url: input.photo_url } : {}
+
   // Perform the update.
   // .eq('user_id', user.id) is redundant given RLS, but provides defence-in-depth.
-  // CRITICAL: Do NOT add full_name, job_title, department, phone, email, etc. here.
+  // CRITICAL: Do NOT add full_name, job_title, department, phone, email,
+  // show_phone, show_email, cta_label, cta_url, or any other admin-only field here.
   const { error: updateError } = await supabase
     .from('staff_cards')
     .update({
       bio: input.bio.trim() || null,
       whatsapp_number: whatsappNumber,
-      show_phone: input.show_phone,
-      show_email: input.show_email,
       wa_notify_enabled: input.wa_notify_enabled,
       social_links: socialLinks,
-      cta_label: input.cta_label.trim() || null,
-      cta_url: input.cta_url.trim() || null,
-      photo_url: input.photo_url,
+      ...photoUpdate,
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', user.id)

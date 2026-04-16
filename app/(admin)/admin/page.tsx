@@ -17,8 +17,14 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { createCompany, type CreateCompanyInput } from '@/lib/actions/admin'
-import { PRICING_TIERS, calculateBilling, formatZar, getTierForCardCount } from '@/lib/utils/pricing'
+import { createCompany } from '@/lib/actions/admin'
+import {
+  PRICING_TIERS,
+  calculateBilling,
+  formatZar,
+  getTierForCardCount,
+  type BillingCycle,
+} from '@/lib/utils/pricing'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -148,8 +154,6 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
   const [name, setName] = useState('')
   const [website, setWebsite] = useState('')
   const [tagline, setTagline] = useState('')
-  // Subscription
-  const [plan, setPlan] = useState<'starter' | 'growth' | 'enterprise'>('starter')
   // Brand
   const [primaryColor, setPrimaryColor] = useState('#16181D')
   const [secondaryColor, setSecondaryColor] = useState('#2DD4BF')
@@ -161,15 +165,17 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
   const [contactPhone, setContactPhone] = useState('')
   const [contactWhatsapp, setContactWhatsapp] = useState('')
   // Pricing
+  const [isQrDigital, setIsQrDigital] = useState(false)
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
   const [cardCount, setCardCount] = useState('')
-  const [minCommitted, setMinCommitted] = useState('')
-  const [overrideRate, setOverrideRate] = useState('')
   const [contractStart, setContractStart] = useState(new Date().toISOString().split('T')[0])
   const [contractEnd, setContractEnd] = useState('')
   const [nextBilling, setNextBilling] = useState('')
   // NFC order
   const [nfcCount, setNfcCount] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState('')
+  // Referral
+  const [referredByCode, setReferredByCode] = useState('')
   // Internal notes
   const [notes, setNotes] = useState('')
   // State
@@ -186,7 +192,6 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
       name: name.trim(),
       website: website.trim() || undefined,
       tagline: tagline.trim() || undefined,
-      subscriptionPlan: plan,
       brandPrimaryColor: primaryColor,
       brandSecondaryColor: secondaryColor,
       brandDarkMode: darkMode,
@@ -195,16 +200,16 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
       adminEmail: adminEmail.trim() || undefined,
       primaryContactPhone: contactPhone.trim() || undefined,
       primaryContactWhatsapp: contactWhatsapp.trim() || undefined,
-      pricingTierId: cardCount
-        ? getTierForCardCount(parseInt(cardCount, 10)).id
-        : undefined,
-      ratePerCardZar: overrideRate ? parseFloat(overrideRate) : undefined,
-      minCardsCommitted: minCommitted ? parseInt(minCommitted, 10) : undefined,
+      pricingV2Enabled: true,
+      isQrDigital,
+      billingCycle,
+      maxStaffCards: cardCount ? parseInt(cardCount, 10) : undefined,
       contractStartDate: contractStart || undefined,
       contractEndDate: contractEnd || undefined,
       nextBillingDate: nextBilling || undefined,
       nfcCardsOrdered: nfcCount ? parseInt(nfcCount, 10) : 0,
       nfcDeliveryAddress: deliveryAddress.trim() || undefined,
+      referredByCode: referredByCode.trim() || undefined,
       internalNotes: notes.trim() || undefined,
     })
 
@@ -241,13 +246,6 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
           <Field label="Company Name" required>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
               placeholder="e.g. Karam Africa" className={inputCls} required />
-          </Field>
-          <Field label="Subscription Plan">
-            <select value={plan} onChange={e => setPlan(e.target.value as typeof plan)} className={inputCls}>
-              <option value="starter">Starter — up to 10 cards</option>
-              <option value="growth">Growth — up to 35 cards</option>
-              <option value="enterprise">Enterprise — unlimited</option>
-            </select>
           </Field>
           <Field label="Website URL">
             <input type="url" value={website} onChange={e => setWebsite(e.target.value)}
@@ -334,21 +332,51 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
 
       {/* ── Section 4: Pricing & Billing ── */}
       <FormSection title="Pricing & Billing" icon="payments">
-        {/* Tier picker */}
+
+        {/* QR Digital toggle */}
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white">
+          <input
+            type="checkbox"
+            id="qrDigital"
+            checked={isQrDigital}
+            onChange={e => setIsQrDigital(e.target.checked)}
+            className="w-4 h-4 accent-teal-600"
+          />
+          <label htmlFor="qrDigital" className="flex-1">
+            <span className="text-sm font-semibold text-slate-800">QR Digital only</span>
+            <span className="block text-xs text-slate-500 mt-0.5">No physical NFC cards — digital-only tier (max 15 cards, R49/mo flat rate)</span>
+          </label>
+        </div>
+
+        {/* Billing cycle */}
+        <div className="flex items-center gap-4">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Billing Cycle</span>
+          <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+            {(['monthly', 'annual'] as const).map(cycle => (
+              <button key={cycle} type="button"
+                onClick={() => setBillingCycle(cycle)}
+                className={`px-5 py-2 text-sm font-semibold transition-colors ${billingCycle === cycle ? 'bg-teal-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {cycle === 'monthly' ? 'Monthly' : 'Annual (2 months free)'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tier cards — show only tiers matching isQrDigital */}
         <div>
           <span className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Pricing Tier</span>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {PRICING_TIERS.map(t => {
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {PRICING_TIERS.filter(t => t.isQrDigital === isQrDigital).map(t => {
               const count = parseInt(cardCount || '0', 10)
-              const autoTier = count > 0 ? getTierForCardCount(count) : null
+              const autoTier = count > 0 ? getTierForCardCount(count, isQrDigital) : null
               const isAuto = autoTier?.name === t.name
               return (
                 <div key={t.name}
                   className={`rounded-xl border-2 p-4 transition-all ${isAuto ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white'}`}>
-                  <p className={`text-sm font-bold ${isAuto ? 'text-teal-700' : 'text-slate-800'}`}>{t.displayName}</p>
+                  <p className={`text-sm font-bold ${isAuto ? 'text-teal-700' : 'text-slate-800'}`}>{t.name}</p>
                   <p className="text-xs text-slate-500 mt-0.5">{t.minCards}{t.maxCards ? `–${t.maxCards}` : '+'} cards</p>
-                  <p className="text-sm font-bold text-slate-900 mt-2">{formatZar(t.ratePerCardZar)}<span className="text-xs font-normal text-slate-500">/card/mo</span></p>
-                  <p className="text-xs text-slate-400">Setup: {formatZar(t.setupFeePerCardZar)}/card</p>
+                  <p className="text-sm font-bold text-slate-900 mt-2">{formatZar(t.monthlyRateZar)}<span className="text-xs font-normal text-slate-500">/mo</span></p>
+                  {t.setupFeeZar > 0 && <p className="text-xs text-slate-400">Setup: {formatZar(t.setupFeeZar)}</p>}
                   {isAuto && <span className="mt-2 inline-block text-[10px] font-bold uppercase tracking-wider text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">Auto-selected</span>}
                 </div>
               )
@@ -359,17 +387,8 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Field label="Number of Cards" hint="sets tier automatically">
             <input type="number" value={cardCount}
-              onChange={e => { setCardCount(e.target.value); if (!minCommitted) setMinCommitted(e.target.value) }}
+              onChange={e => setCardCount(e.target.value)}
               placeholder="e.g. 12" min="1" className={inputCls} />
-          </Field>
-          <Field label="Minimum Committed" hint="billing floor">
-            <input type="number" value={minCommitted} onChange={e => setMinCommitted(e.target.value)}
-              placeholder="e.g. 10" min="1" className={inputCls} />
-          </Field>
-          <Field label="Override Rate (ZAR)" hint="leave blank for tier default">
-            <input type="number" value={overrideRate} onChange={e => setOverrideRate(e.target.value)}
-              placeholder={cardCount ? `${getTierForCardCount(parseInt(cardCount || '0', 10)).ratePerCardZar}` : '—'}
-              step="0.01" min="0" className={inputCls} />
           </Field>
           <Field label="Contract Start">
             <input type="date" value={contractStart} onChange={e => setContractStart(e.target.value)} className={inputCls} />
@@ -384,56 +403,76 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
 
         {/* Live billing estimate */}
         {cardCount && parseInt(cardCount, 10) > 0 && (() => {
-          const est = calculateBilling(
-            parseInt(cardCount, 10),
-            parseInt(minCommitted || cardCount, 10),
-            overrideRate ? parseFloat(overrideRate) : undefined,
-          )
-          return (
-            <div className="rounded-2xl bg-slate-900 text-white p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Tier</p>
-                <p className="text-lg font-bold">{est.tier.displayName}</p>
+          const count = parseInt(cardCount, 10)
+          try {
+            const est = calculateBilling(count, isQrDigital, billingCycle)
+            return (
+              <div className="rounded-2xl bg-slate-900 text-white p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Tier</p>
+                  <p className="text-lg font-bold">{est.tier.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Monthly rate</p>
+                  <p className="text-lg font-bold">{formatZar(est.tier.monthlyRateZar)}/mo</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Monthly total</p>
+                  <p className="text-lg font-bold text-teal-400">{formatZar(est.monthlyTotalZar)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Setup fee</p>
+                  <p className="text-lg font-bold text-amber-400">{formatZar(est.setupTotalZar)}</p>
+                </div>
+                {billingCycle === 'annual' && (
+                  <div className="md:col-span-4 pt-2 border-t border-slate-700">
+                    <p className="text-xs text-slate-400">
+                      Annual total:{' '}
+                      <span className="text-white font-semibold">{formatZar(est.annualDiscountedTotalZar)}</span>
+                      {' '}&nbsp;·&nbsp; 10 months charged (2 months free)
+                    </p>
+                  </div>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Rate / card</p>
-                <p className="text-lg font-bold">{formatZar(overrideRate ? parseFloat(overrideRate) : est.tier.ratePerCardZar)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Monthly total</p>
-                <p className="text-lg font-bold text-teal-400">{formatZar(est.monthlyTotalZar)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Setup fee</p>
-                <p className="text-lg font-bold text-amber-400">{formatZar(est.setupTotalZar)}</p>
-              </div>
-              <div className="md:col-span-4 pt-2 border-t border-slate-700">
-                <p className="text-xs text-slate-400">Annual value: <span className="text-white font-semibold">{formatZar(est.annualTotalZar)}</span> &nbsp;·&nbsp; Billed on {est.billedCards} cards (min {est.tier.minCards})</p>
-              </div>
-            </div>
-          )
+            )
+          } catch {
+            return (
+              <p className="text-xs text-red-500">
+                {isQrDigital ? 'QR Digital supports up to 15 cards.' : 'Enter a valid card count.'}
+              </p>
+            )
+          }
         })()}
       </FormSection>
 
-      {/* ── Section 5: NFC Card Order ── */}
-
-      <FormSection title="NFC Card Order" icon="contactless">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Cards Ordered">
-            <input type="number" value={nfcCount} onChange={e => setNfcCount(e.target.value)}
-              placeholder="e.g. 12" min="0" className={inputCls} />
-          </Field>
-          <div className="md:col-span-2">
-            <Field label="Delivery Address">
-              <textarea value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)}
-                placeholder="Street address, City, Province, Postal code"
-                rows={2} className={`${inputCls} resize-none`} />
+      {/* ── Section 5: NFC Card Order (hidden for QR Digital) ── */}
+      {!isQrDigital && (
+        <FormSection title="NFC Card Order" icon="contactless">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Cards Ordered">
+              <input type="number" value={nfcCount} onChange={e => setNfcCount(e.target.value)}
+                placeholder="e.g. 12" min="0" className={inputCls} />
             </Field>
+            <div className="md:col-span-2">
+              <Field label="Delivery Address">
+                <textarea value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)}
+                  placeholder="Street address, City, Province, Postal code"
+                  rows={2} className={`${inputCls} resize-none`} />
+              </Field>
+            </div>
           </div>
-        </div>
+        </FormSection>
+      )}
+
+      {/* ── Section 6: Referral ── */}
+      <FormSection title="Referral" icon="share">
+        <Field label="Referred by Code" hint="leave blank if not referred">
+          <input type="text" value={referredByCode} onChange={e => setReferredByCode(e.target.value.toUpperCase())}
+            placeholder="e.g. KARAM2026" className={`${inputCls} font-mono uppercase`} maxLength={12} />
+        </Field>
       </FormSection>
 
-      {/* ── Section 6: Internal Notes ── */}
+      {/* ── Section 7: Internal Notes ── */}
       <FormSection title="Internal Notes" icon="sticky_note_2">
         <Field label="Notes" hint="only visible to super admin">
           <textarea value={notes} onChange={e => setNotes(e.target.value)}

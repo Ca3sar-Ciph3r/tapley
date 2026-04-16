@@ -56,8 +56,7 @@ type FormValues = {
   show_phone: boolean
   show_email: boolean
   social_links: SocialLinksForm
-  cta_label: string
-  cta_url: string
+  // cta_label / cta_url intentionally excluded: set at company level via /dashboard/branding
   wa_notify_enabled: boolean
   show_optin_form: boolean
   photo_url: string | null
@@ -178,6 +177,11 @@ export default function EditCardPage({
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
   const [deactivating, setDeactivating] = useState(false)
+  // Track whether the photo was explicitly changed so we only write photo_url
+  // to the DB when the user actually uploaded a new photo or removed the existing
+  // one. Without this guard, saving other fields would unconditionally overwrite
+  // any photo_url already stored in the database.
+  const [photoChanged, setPhotoChanged] = useState(false)
 
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -262,8 +266,6 @@ export default function EditCardPage({
         website:   social.website   ?? '',
         calendly:  social.calendly  ?? '',
       },
-      cta_label: card.cta_label ?? '',
-      cta_url: card.cta_url ?? '',
       wa_notify_enabled: card.wa_notify_enabled,
       show_optin_form: card.show_optin_form,
       photo_url: card.photo_url,
@@ -351,6 +353,7 @@ export default function EditCardPage({
     setValues(prev =>
       prev ? { ...prev, photo_file: file, photo_preview: preview } : prev
     )
+    setPhotoChanged(true)
     setErrors(prev => ({ ...prev, photo: undefined }))
     setSaveSuccess(false)
   }
@@ -360,6 +363,7 @@ export default function EditCardPage({
     setValues(prev =>
       prev ? { ...prev, photo_file: null, photo_preview: null, photo_url: null } : prev
     )
+    setPhotoChanged(true)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setSaveSuccess(false)
   }
@@ -384,16 +388,20 @@ export default function EditCardPage({
 
     let finalPhotoUrl = values.photo_url
 
-    // Upload new photo if selected
+    // Upload new photo if selected.
+    // The filename includes a timestamp so each upload gets a unique URL.
+    // This is required to bust the Next.js Image optimisation cache and CDN:
+    // if we uploaded to the same path (photo.jpg) the URL would be identical
+    // and both caches would keep serving the old image even after revalidatePath.
     if (values.photo_file) {
       try {
         const blob = await resizePhoto(values.photo_file)
         const supabase = createClient()
-        const storagePath = `${meta.company_id}/${meta.id}/photo.jpg`
+        const storagePath = `${meta.company_id}/${meta.id}/photo_${Date.now()}.jpg`
 
         const { error: uploadError } = await supabase.storage
           .from('staff-photos')
-          .upload(storagePath, blob, { upsert: true, contentType: 'image/jpeg' })
+          .upload(storagePath, blob, { upsert: false, contentType: 'image/jpeg' })
 
         if (uploadError) {
           setSaveError(`Photo upload failed: ${uploadError.message}`)
@@ -412,6 +420,10 @@ export default function EditCardPage({
       }
     }
 
+    // Only include photo_url when the admin explicitly uploaded a new photo or
+    // removed the existing one. Omitting it causes the server action to leave
+    // the stored value untouched, preventing a plain field-edit save from
+    // accidentally overwriting a photo that was already in the database.
     const input: UpdateStaffCardInput = {
       full_name: values.full_name,
       job_title: values.job_title,
@@ -423,11 +435,10 @@ export default function EditCardPage({
       show_phone: values.show_phone,
       show_email: values.show_email,
       social_links: values.social_links,
-      cta_label: values.cta_label,
-      cta_url: values.cta_url,
+      // cta_label / cta_url deliberately omitted — set at company level, preserved in DB
       wa_notify_enabled: values.wa_notify_enabled,
       show_optin_form: values.show_optin_form,
-      photo_url: finalPhotoUrl,
+      ...(photoChanged ? { photo_url: finalPhotoUrl } : {}),
     }
 
     const result = await updateStaffCard(meta.id, input)
@@ -446,6 +457,7 @@ export default function EditCardPage({
         ? { ...prev, photo_url: finalPhotoUrl, photo_file: null, photo_preview: null }
         : prev
     )
+    setPhotoChanged(false)
     setSaving(false)
     setSaveSuccess(true)
 
@@ -772,32 +784,7 @@ export default function EditCardPage({
             </div>
           </SectionPanel>
 
-          {/* ── Section 4: CTA Override ── */}
-          <SectionPanel title="CTA Button Override" icon="touch_app">
-            <p className="text-xs text-slate-400 -mt-1 mb-3">
-              Leave blank to use the company default CTA button.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <Field label="Button Label" hint='e.g. "Book a demo" or "Chat to me"'>
-                <input
-                  type="text"
-                  value={values.cta_label}
-                  onChange={e => set('cta_label', e.target.value)}
-                  placeholder="Leave blank for company default"
-                  className={inputClass(false)}
-                />
-              </Field>
-              <Field label="Button URL" hint="Leave blank to use WhatsApp default">
-                <input
-                  type="url"
-                  value={values.cta_url}
-                  onChange={e => set('cta_url', e.target.value)}
-                  placeholder="https://…"
-                  className={inputClass(false)}
-                />
-              </Field>
-            </div>
-          </SectionPanel>
+          {/* CTA Button: set at company level via /dashboard/branding — not per-card */}
 
           {/* ── Section 5: Settings ── */}
           <SectionPanel title="Settings" icon="settings">
@@ -947,10 +934,11 @@ export default function EditCardPage({
             showPhone={values.show_phone}
             showEmail={values.show_email}
             socialLinks={values.social_links}
-            ctaLabel={values.cta_label}
-            ctaUrl={values.cta_url}
+            ctaLabel=""
+            ctaUrl=""
             photoSrc={photoDisplay}
             company={meta.company}
+            cardTemplate={meta.company.card_template}
           />
         </div>
       </div>

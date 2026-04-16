@@ -87,16 +87,12 @@ type Analytics = {
   recent: RawView[]
 }
 
-// Form state for editable fields only
+// Form state for editable fields only (ROLES.md Staff Card Self-Edit Limits)
 type EditForm = {
   bio: string
   whatsapp_number: string
-  show_phone: boolean
-  show_email: boolean
   wa_notify_enabled: boolean
   social_links: SocialLinks
-  cta_label: string
-  cta_url: string
   photo_url: string | null
   photo_file: File | null
   photo_preview: string | null
@@ -317,12 +313,8 @@ export default function MyCardPage() {
     setForm({
       bio: cardData.bio ?? '',
       whatsapp_number: cardData.whatsapp_number ?? '',
-      show_phone: cardData.show_phone,
-      show_email: cardData.show_email,
       wa_notify_enabled: cardData.wa_notify_enabled,
       social_links: { ...cardData.social_links },
-      cta_label: cardData.cta_label ?? '',
-      cta_url: cardData.cta_url ?? '',
       photo_url: cardData.photo_url,
       photo_file: null,
       photo_preview: null,
@@ -397,15 +389,19 @@ export default function MyCardPage() {
       const previewUrl = URL.createObjectURL(resized)
       setForm(prev => prev ? { ...prev, photo_file: file, photo_preview: previewUrl } : prev)
 
-      // 3. Upload to Supabase Storage
+      // 3. Upload to Supabase Storage.
+      // The filename includes a timestamp so each upload gets a unique URL.
+      // This busts the Next.js Image optimisation cache and CDN: uploading to
+      // the same path (photo.jpg) would leave the URL unchanged and both caches
+      // would keep serving the old image even after revalidatePath is called.
       const supabase = createClient()
-      const path = `${card.company_id}/${card.id}/photo.jpg`
+      const path = `${card.company_id}/${card.id}/photo_${Date.now()}.jpg`
 
       const { error: uploadError } = await supabase.storage
         .from('staff-photos')
         .upload(path, resized, {
           contentType: 'image/jpeg',
-          upsert: true,
+          upsert: false,
         })
 
       if (uploadError) {
@@ -438,16 +434,20 @@ export default function MyCardPage() {
     setSaveError(null)
     setSaveSuccess(false)
 
+    // Only include photo_url when it changed from the value that was loaded
+    // from the database. The upload happens immediately on file select
+    // (handlePhotoSelect), which updates form.photo_url to the new storage URL.
+    // Comparing with card.photo_url tells us whether the user actually changed
+    // the photo during this session. Omitting photo_url from the input causes
+    // the server action to leave the stored value untouched, preventing a plain
+    // field-edit save from accidentally overwriting a photo already in the DB.
+    const photoChangedFromDb = form.photo_url !== card.photo_url
     const input: UpdateOwnStaffCardInput = {
       bio: form.bio,
       whatsapp_number: form.whatsapp_number,
-      show_phone: form.show_phone,
-      show_email: form.show_email,
       wa_notify_enabled: form.wa_notify_enabled,
       social_links: { ...form.social_links },
-      cta_label: form.cta_label,
-      cta_url: form.cta_url,
-      photo_url: form.photo_url,
+      ...(photoChangedFromDb ? { photo_url: form.photo_url } : {}),
     }
 
     const result = await updateOwnStaffCard(input)
@@ -461,12 +461,8 @@ export default function MyCardPage() {
         ...prev,
         bio: form.bio.trim() || null,
         whatsapp_number: form.whatsapp_number.trim() || null,
-        show_phone: form.show_phone,
-        show_email: form.show_email,
         wa_notify_enabled: form.wa_notify_enabled,
         social_links: { ...form.social_links },
-        cta_label: form.cta_label.trim() || null,
-        cta_url: form.cta_url.trim() || null,
         photo_url: form.photo_url,
       } : prev)
       if (successTimerRef.current) clearTimeout(successTimerRef.current)
@@ -531,6 +527,8 @@ export default function MyCardPage() {
     cta_label: card.company.cta_label,
     cta_url: card.company.cta_url,
   }
+  const staffCtaLabel = card.cta_label ?? ''
+  const staffCtaUrl = card.cta_url ?? ''
 
   const cardUrl = card.nfc_slug
     ? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'}/c/${card.nfc_slug}`
@@ -753,90 +751,37 @@ export default function MyCardPage() {
               </div>
             </div>
 
-            {/* Visibility toggles */}
+            {/* Notifications */}
             <div className="glass-panel rounded-2xl p-6">
               <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-4">
-                Visibility &amp; Notifications
+                Notifications
               </h2>
-              <div className="space-y-4">
-                {[
-                  {
-                    key: 'show_phone' as const,
-                    label: 'Show phone number on card',
-                    description: 'Display your work phone number publicly',
-                  },
-                  {
-                    key: 'show_email' as const,
-                    label: 'Show email address on card',
-                    description: 'Display your work email address publicly',
-                  },
-                  {
-                    key: 'wa_notify_enabled' as const,
-                    label: 'WhatsApp view notifications',
-                    description: 'Receive a WhatsApp message when someone views your card',
-                  },
-                ].map(({ key, label, description }) => (
-                  <label key={key} className="flex items-start gap-4 cursor-pointer group">
-                    <div className="relative flex-shrink-0 mt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={form[key] as boolean}
-                        onChange={e => setField(key, e.target.checked)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={[
-                          'w-10 h-6 rounded-full transition-colors duration-200',
-                          (form[key] as boolean) ? 'bg-teal-500' : 'bg-slate-200',
-                        ].join(' ')}
-                      />
-                      <div
-                        className={[
-                          'absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-200',
-                          (form[key] as boolean) ? 'left-5' : 'left-1',
-                        ].join(' ')}
-                      />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{label}</p>
-                      <p className="text-xs text-slate-400">{description}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom CTA (optional — admin-managed at company level, staff can override) */}
-            <div className="glass-panel rounded-2xl p-6">
-              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Custom CTA Button
-              </h2>
-              <p className="text-xs text-slate-400 mb-4">
-                Optionally override the company&apos;s default call-to-action button on your card.
-                Leave blank to use the company default.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Button Label</label>
+              <label className="flex items-start gap-4 cursor-pointer group">
+                <div className="relative flex-shrink-0 mt-0.5">
                   <input
-                    type="text"
-                    value={form.cta_label}
-                    onChange={e => setField('cta_label', e.target.value)}
-                    placeholder={card.company.cta_label || 'Send me a WhatsApp'}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent"
+                    type="checkbox"
+                    checked={form.wa_notify_enabled}
+                    onChange={e => setField('wa_notify_enabled', e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div
+                    className={[
+                      'w-10 h-6 rounded-full transition-colors duration-200',
+                      form.wa_notify_enabled ? 'bg-teal-500' : 'bg-slate-200',
+                    ].join(' ')}
+                  />
+                  <div
+                    className={[
+                      'absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-200',
+                      form.wa_notify_enabled ? 'left-5' : 'left-1',
+                    ].join(' ')}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Button URL</label>
-                  <input
-                    type="url"
-                    value={form.cta_url}
-                    onChange={e => setField('cta_url', e.target.value)}
-                    placeholder="https://…"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent"
-                  />
+                  <p className="text-sm font-medium text-slate-700">WhatsApp view notifications</p>
+                  <p className="text-xs text-slate-400">Receive a WhatsApp message when someone views your card</p>
                 </div>
-              </div>
+              </label>
             </div>
 
             {/* Save / error feedback */}
@@ -885,13 +830,14 @@ export default function MyCardPage() {
               phone={card.phone ?? ''}
               email={card.email ?? ''}
               whatsappNumber={form.whatsapp_number}
-              showPhone={form.show_phone}
-              showEmail={form.show_email}
+              showPhone={card.show_phone}
+              showEmail={card.show_email}
               socialLinks={form.social_links}
-              ctaLabel={form.cta_label}
-              ctaUrl={form.cta_url}
+              ctaLabel={staffCtaLabel}
+              ctaUrl={staffCtaUrl}
               photoSrc={photoSrc}
               company={previewCompany}
+              cardTemplate={card.company.card_template}
             />
           </div>
 
