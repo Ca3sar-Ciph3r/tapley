@@ -10,7 +10,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { resend, FROM_ADDRESS } from '@/lib/email/resend'
+import { getResend, FROM_ADDRESS } from '@/lib/email/resend'
 import { sendDay5NudgeEmail, sendDay14AnalyticsEmail } from '@/lib/email/onboarding'
 
 // ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ export async function sendMonthlyDigest(
 </html>
 `
 
-  const { error: sendError } = await resend.emails.send({
+  const { error: sendError } = await getResend().emails.send({
     from: FROM_ADDRESS,
     to: company.primary_contact_email,
     subject: `Your team made ${totalViews.toLocaleString('en-ZA')} connections this month — here's the breakdown`,

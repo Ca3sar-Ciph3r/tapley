@@ -10,7 +10,7 @@
 //
 // Automated scheduling (cron / Make.com) is post-MVP.
 
-import { resend, FROM_ADDRESS } from './resend'
+import { getResend, FROM_ADDRESS } from './resend'
 
 // ---------------------------------------------------------------------------
 // Day 0 — Welcome
@@ -60,7 +60,7 @@ export async function sendWelcomeEmail(params: {
 </html>
 `
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: FROM_ADDRESS,
     to: adminEmail,
     subject: `Welcome to Tapley Connect — ${companyName} is live!`,
@@ -111,7 +111,7 @@ export async function sendDay5NudgeEmail(params: {
 </html>
 `
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: FROM_ADDRESS,
     to: adminEmail,
     subject: `${companyName} — Have you tapped your card yet?`,
@@ -174,7 +174,7 @@ export async function sendDay14AnalyticsEmail(params: {
 </html>
 `
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: FROM_ADDRESS,
     to: adminEmail,
     subject: `${companyName} — your first 2 weeks: ${viewCount} card taps`,
