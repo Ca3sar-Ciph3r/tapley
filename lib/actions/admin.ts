@@ -268,9 +268,27 @@ export async function createCompany(
   const name = input.name.trim()
   if (!name) return { error: 'Company name is required.' }
 
-  // max_staff_cards: use committed count if supplied, otherwise default 999
-  // (no artificial cap — the pricing tier and billing commitment are the real controls)
-  const maxCards = input.minCardsCommitted ?? 999
+  // Sanitise and validate string inputs
+  if (input.website?.trim() && !/^https?:\/\/.+/.test(input.website.trim())) {
+    return { error: 'Website must start with http:// or https://' }
+  }
+  if (input.adminEmail?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.adminEmail.trim())) {
+    return { error: 'Admin email is not valid.' }
+  }
+  if (input.brandPrimaryColor && !/^#[0-9a-fA-F]{6}$/.test(input.brandPrimaryColor)) {
+    return { error: 'Primary colour must be a valid hex code.' }
+  }
+  if (input.brandSecondaryColor && !/^#[0-9a-fA-F]{6}$/.test(input.brandSecondaryColor)) {
+    return { error: 'Secondary colour must be a valid hex code.' }
+  }
+
+  // QR Digital: hard cap at 15 cards
+  if (input.isQrDigital && input.maxStaffCards && input.maxStaffCards > 15) {
+    return { error: 'QR Digital tier supports a maximum of 15 cards.' }
+  }
+
+  // max_staff_cards: use maxStaffCards if supplied, fall back to minCardsCommitted, then 999
+  const maxCards = input.maxStaffCards ?? input.minCardsCommitted ?? 999
 
   // Derive slug from company name: lowercase, replace non-alphanumeric with hyphens
   const baseSlug = name

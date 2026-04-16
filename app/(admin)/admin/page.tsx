@@ -184,26 +184,71 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) { setError('Company name is required.'); return }
+
+    // ── Client-side validation ──────────────────────────────────────────────
+    const trimmedName = name.trim()
+    if (!trimmedName) { setError('Company name is required.'); return }
+
+    const parsedCardCount = cardCount ? parseInt(cardCount, 10) : 0
+    if (parsedCardCount < 1) { setError('Number of cards must be at least 1.'); return }
+    if (isQrDigital && parsedCardCount > 15) {
+      setError('QR Digital tier supports a maximum of 15 cards. Reduce the card count or switch to an NFC tier.')
+      return
+    }
+
+    const trimmedEmail = adminEmail.trim()
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('Admin email address is not valid.')
+      return
+    }
+
+    const trimmedWebsite = website.trim()
+    if (trimmedWebsite && !/^https?:\/\/.+/.test(trimmedWebsite)) {
+      setError('Website must start with http:// or https://')
+      return
+    }
+
+    const trimmedPhone = contactPhone.trim()
+    if (trimmedPhone && !/^\+\d{7,15}$/.test(trimmedPhone)) {
+      setError('Phone number must be in E.164 format, e.g. +27821234567')
+      return
+    }
+
+    const trimmedWa = contactWhatsapp.trim()
+    if (trimmedWa && !/^\+\d{7,15}$/.test(trimmedWa)) {
+      setError('WhatsApp number must be in E.164 format, e.g. +27821234567')
+      return
+    }
+
+    if (primaryColor && !/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
+      setError('Primary colour must be a valid hex code, e.g. #16181D')
+      return
+    }
+    if (secondaryColor && !/^#[0-9a-fA-F]{6}$/.test(secondaryColor)) {
+      setError('Secondary colour must be a valid hex code, e.g. #2DD4BF')
+      return
+    }
+    // ───────────────────────────────────────────────────────────────────────
+
     setSubmitting(true)
     setError(null)
 
     const result = await createCompany({
-      name: name.trim(),
-      website: website.trim() || undefined,
+      name: trimmedName,
+      website: trimmedWebsite || undefined,
       tagline: tagline.trim() || undefined,
       brandPrimaryColor: primaryColor,
       brandSecondaryColor: secondaryColor,
       brandDarkMode: darkMode,
       cardTemplate,
       primaryContactName: contactName.trim() || undefined,
-      adminEmail: adminEmail.trim() || undefined,
-      primaryContactPhone: contactPhone.trim() || undefined,
-      primaryContactWhatsapp: contactWhatsapp.trim() || undefined,
+      adminEmail: trimmedEmail || undefined,
+      primaryContactPhone: trimmedPhone || undefined,
+      primaryContactWhatsapp: trimmedWa || undefined,
       pricingV2Enabled: true,
       isQrDigital,
       billingCycle,
-      maxStaffCards: cardCount ? parseInt(cardCount, 10) : undefined,
+      maxStaffCards: parsedCardCount || undefined,
       contractStartDate: contractStart || undefined,
       contractEndDate: contractEnd || undefined,
       nextBillingDate: nextBilling || undefined,
@@ -385,10 +430,25 @@ function CreateCompanyForm({ onCreated, onCancel }: CreateCompanyFormProps) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="Number of Cards" hint="sets tier automatically">
-            <input type="number" value={cardCount}
+          <Field
+            label="Number of Cards"
+            hint={isQrDigital ? 'max 15 for QR Digital' : 'sets tier automatically'}
+          >
+            <input
+              type="number"
+              value={cardCount}
               onChange={e => setCardCount(e.target.value)}
-              placeholder="e.g. 12" min="1" className={inputCls} />
+              placeholder="e.g. 12"
+              min="1"
+              max={isQrDigital ? 15 : undefined}
+              className={`${inputCls} ${isQrDigital && parseInt(cardCount || '0', 10) > 15 ? 'border-red-400 ring-2 ring-red-200' : ''}`}
+            />
+            {isQrDigital && parseInt(cardCount || '0', 10) > 15 && (
+              <p className="mt-1 text-xs text-red-600 font-semibold flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px] leading-none">error</span>
+                QR Digital supports max 15 cards
+              </p>
+            )}
           </Field>
           <Field label="Contract Start">
             <input type="date" value={contractStart} onChange={e => setContractStart(e.target.value)} className={inputCls} />
