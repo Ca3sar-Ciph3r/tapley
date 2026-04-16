@@ -44,7 +44,7 @@ type RawStaffCard = {
   photo_url: string | null
 }
 
-type TopCard = RawStaffCard & { views: number }
+type TopCard = RawStaffCard & { views: number; lastSeen: string | null }
 
 // ---------------------------------------------------------------------------
 // Chart data builders
@@ -340,6 +340,14 @@ function TeamMemberRow({ card, rank }: { card: TopCard; rank: number }) {
     .join('')
     .toUpperCase()
 
+  const lastSeenLabel = card.lastSeen
+    ? new Date(card.lastSeen).toLocaleDateString('en-ZA', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    : 'Never'
+
   return (
     <div className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
       <div className="flex items-center gap-3">
@@ -367,6 +375,7 @@ function TeamMemberRow({ card, rank }: { card: TopCard; rank: number }) {
       <div className="text-right flex-shrink-0 ml-3">
         <p className="text-sm font-bold text-slate-900 tabular-nums">{card.views}</p>
         <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-tight">Taps</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">{lastSeenLabel}</p>
       </div>
     </div>
   )
@@ -457,15 +466,24 @@ export default function AnalyticsPage() {
   const androidPct = totalViews > 0 ? Math.round((androidTaps / totalViews) * 100) : 0
   const otherPct = Math.max(0, 100 - iosPct - androidPct)
 
-  // Top cards by views in last 30 days
+  // Top cards by views in last 30 days + last_seen from full 90d dataset
   const viewCountMap = new Map<string, number>()
   for (const v of views30d) {
     if (v.staff_card_id) {
       viewCountMap.set(v.staff_card_id, (viewCountMap.get(v.staff_card_id) ?? 0) + 1)
     }
   }
+  // Compute last_seen per card from full 90d dataset (ISO string comparison works for sort)
+  const lastSeenMap = new Map<string, string>()
+  for (const v of rawViews) {
+    if (!v.staff_card_id) continue
+    const existing = lastSeenMap.get(v.staff_card_id)
+    if (!existing || v.viewed_at > existing) {
+      lastSeenMap.set(v.staff_card_id, v.viewed_at)
+    }
+  }
   const topCards: TopCard[] = staffCards
-    .map(c => ({ ...c, views: viewCountMap.get(c.id) ?? 0 }))
+    .map(c => ({ ...c, views: viewCountMap.get(c.id) ?? 0, lastSeen: lastSeenMap.get(c.id) ?? null }))
     .sort((a, b) => b.views - a.views)
     .slice(0, 5)
 

@@ -26,6 +26,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { startImpersonation, generateNfcBatch, updateNfcCardStatus, inviteCompanyAdmin } from '@/lib/actions/admin'
+import { sendMonthlyDigest, sendDay5Nudge, sendDay14Analytics } from '@/lib/actions/analytics'
 import { ClientInfoPanel } from './_components/ClientInfoPanel'
 import { BillingPanel } from './_components/BillingPanel'
 import { OnboardingChecklist } from './_components/OnboardingChecklist'
@@ -65,6 +66,12 @@ type Company = {
   next_billing_date: string | null
   // Onboarding checklist
   onboarding_checklist: Record<string, boolean> | null
+  // Data deletion (migration 20260415030000 — cast until types regenerated)
+  deletion_scheduled_at?: string | null
+  // Pricing v2 (migration 20260415010000/040000)
+  pricing_v2_enabled?: boolean | null
+  is_qr_digital?: boolean | null
+  billing_cycle?: string | null
 }
 
 type NfcCardRow = {
@@ -161,6 +168,87 @@ function formatDate(iso: string) {
     month: '2-digit',
     year: 'numeric',
   })
+}
+
+// ---------------------------------------------------------------------------
+// EmailTriggersPanel — manual drip email + monthly digest triggers
+// ---------------------------------------------------------------------------
+
+function EmailTriggersPanel({
+  companyId,
+  primaryContactEmail,
+}: {
+  companyId: string
+  primaryContactEmail: string | null
+}) {
+  const [sending, setSending] = useState<string | null>(null)
+  const [results, setResults] = useState<Record<string, string | null>>({})
+
+  async function trigger(type: 'day5' | 'day14' | 'digest') {
+    setSending(type)
+    setResults(prev => ({ ...prev, [type]: null }))
+    let error: string | undefined
+    if (type === 'day5') ({ error } = await sendDay5Nudge(companyId))
+    else if (type === 'day14') ({ error } = await sendDay14Analytics(companyId))
+    else ({ error } = await sendMonthlyDigest(companyId))
+    setResults(prev => ({ ...prev, [type]: error ?? 'sent' }))
+    setSending(null)
+  }
+
+  const emails = [
+    { type: 'day5' as const, label: 'Day 5 — Tap nudge', icon: 'touch_app', desc: 'Prompts admin to tap their first card.' },
+    { type: 'day14' as const, label: 'Day 14 — Analytics snapshot', icon: 'bar_chart', desc: 'First 2-week stats with top card.' },
+    { type: 'digest' as const, label: 'Monthly digest', icon: 'mail', desc: '30-day view count + top 3 cards.' },
+  ]
+
+  return (
+    <div className="glass-panel rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+      <div className="mb-6">
+        <h2 className="font-jakarta text-base font-bold text-slate-900">Email Triggers</h2>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Manual send to{' '}
+          <span className="font-mono text-slate-600">{primaryContactEmail ?? 'no email set'}</span>
+        </p>
+      </div>
+
+      {!primaryContactEmail && (
+        <p className="text-sm text-amber-600 bg-amber-50 rounded-xl px-4 py-3 mb-4">
+          No primary contact email set — update Client Info before sending.
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {emails.map(({ type, label, icon, desc }) => (
+          <div key={type} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-[18px] text-teal-600 leading-none">{icon}</span>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{label}</p>
+                <p className="text-xs text-slate-400">{desc}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {results[type] && (
+                <span className={`text-xs font-semibold ${results[type] === 'sent' ? 'text-teal-600' : 'text-red-500'}`}>
+                  {results[type] === 'sent' ? '✓ Sent' : results[type]}
+                </span>
+              )}
+              <button
+                onClick={() => trigger(type)}
+                disabled={sending !== null || !primaryContactEmail}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {sending === type && (
+                  <span className="material-symbols-outlined text-[14px] leading-none animate-spin">progress_activity</span>
+                )}
+                {sending === type ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -589,6 +677,9 @@ export default function CompanyDetailPage() {
           contract_end_date: company.contract_end_date,
           next_billing_date: company.next_billing_date,
           subscription_plan: company.subscription_plan,
+          pricing_v2_enabled: company.pricing_v2_enabled,
+          is_qr_digital: company.is_qr_digital,
+          billing_cycle: company.billing_cycle,
         }}
         activeCardCount={activeCards.length}
       />
@@ -597,6 +688,12 @@ export default function CompanyDetailPage() {
       <OnboardingChecklist
         companyId={company.id}
         checklist={company.onboarding_checklist as Record<string, boolean> | null}
+      />
+
+      {/* Email Triggers */}
+      <EmailTriggersPanel
+        companyId={company.id}
+        primaryContactEmail={company.primary_contact_email}
       />
 
       {/* NFC Cards panel */}
@@ -782,7 +879,11 @@ export default function CompanyDetailPage() {
       </div>
 
       {/* Danger Zone */}
-      <DangerZone companyId={company.id} companyName={company.name} />
+      <DangerZone
+        companyId={company.id}
+        companyName={company.name}
+        deletionScheduledAt={company.deletion_scheduled_at}
+      />
     </div>
   )
 }
@@ -872,6 +973,17 @@ function NfcCardTableRow({
 // StaffCardRow
 // ---------------------------------------------------------------------------
 
+function StaffCardHealthDot({ views30d }: { views30d: number }) {
+  const color = views30d > 0 ? 'bg-green-400' : 'bg-red-400'
+  const title = views30d > 0 ? 'Viewed in last 30 days' : 'No views in last 30 days'
+  return (
+    <span
+      className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${color}`}
+      title={title}
+    />
+  )
+}
+
 function StaffCardRow({ card }: { card: StaffCardRow }) {
   const initials = card.full_name
     .split(' ')
@@ -896,7 +1008,10 @@ function StaffCardRow({ card }: { card: StaffCardRow }) {
               {initials}
             </div>
           )}
-          <span className="text-sm font-semibold text-slate-900">{card.full_name}</span>
+          <div className="flex items-center gap-2">
+            <StaffCardHealthDot views30d={card.views30d} />
+            <span className="text-sm font-semibold text-slate-900">{card.full_name}</span>
+          </div>
         </div>
       </td>
 

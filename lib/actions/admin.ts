@@ -27,6 +27,7 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { sendWelcomeEmail } from '@/lib/email/onboarding'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,14 +175,35 @@ export async function stopImpersonation(): Promise<void> {
 // Input:
 //   name               — company display name (required)
 //   adminEmail         — first admin's email (optional — admin added later if blank)
-//   subscriptionPlan   — 'starter' | 'growth' | 'enterprise' (defaults to 'starter')
-//   maxStaffCards      — override max cards (defaults from plan: 10/35/999)
 // ---------------------------------------------------------------------------
 
-const PLAN_MAX_CARDS: Record<string, number> = {
-  starter: 10,
-  growth: 35,
-  enterprise: 999,
+// ---------------------------------------------------------------------------
+// generateUniqueReferralCode
+//
+// Generates an 8-character alphanumeric referral code (no ambiguous chars).
+// Retries up to 5 times if there's a collision (extremely unlikely).
+// ---------------------------------------------------------------------------
+
+async function generateUniqueReferralCode(): Promise<string> {
+  const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = Array.from(
+      { length: 8 },
+      () => CHARS[Math.floor(Math.random() * CHARS.length)],
+    ).join('')
+
+    // Check uniqueness
+    const { data: existing } = await supabaseAdmin
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from('companies' as any)
+      .select('id')
+      .eq('referral_code', code)
+      .maybeSingle()
+
+    if (!existing) return code
+  }
+  // Fallback: use timestamp suffix to guarantee uniqueness
+  return `TC${Date.now().toString(36).toUpperCase().slice(-6)}`
 }
 
 export type CreateCompanyInput = {
@@ -189,8 +211,6 @@ export type CreateCompanyInput = {
   name: string
   website?: string
   tagline?: string
-  // Subscription
-  subscriptionPlan?: 'starter' | 'growth' | 'enterprise'
   // Pricing
   pricingTierId?: string
   ratePerCardZar?: number
@@ -199,6 +219,11 @@ export type CreateCompanyInput = {
   contractStartDate?: string
   contractEndDate?: string
   nextBillingDate?: string
+  // Pricing v2
+  pricingV2Enabled?: boolean
+  isQrDigital?: boolean
+  billingCycle?: 'monthly' | 'annual'
+  maxStaffCards?: number
   // Brand
   brandPrimaryColor?: string
   brandSecondaryColor?: string
@@ -206,6 +231,7 @@ export type CreateCompanyInput = {
   cardTemplate?: 'minimal' | 'bold' | 'split'
   // Primary contact (Company Admin)
   primaryContactName?: string
+  primaryContactEmail?: string
   adminEmail?: string
   primaryContactPhone?: string
   primaryContactWhatsapp?: string
@@ -214,6 +240,8 @@ export type CreateCompanyInput = {
   nfcDeliveryAddress?: string
   // Internal notes (super admin only)
   internalNotes?: string
+  // Referral (from tapley_ref cookie)
+  referredByCode?: string
 }
 
 export async function createCompany(
@@ -240,8 +268,9 @@ export async function createCompany(
   const name = input.name.trim()
   if (!name) return { error: 'Company name is required.' }
 
-  const plan = input.subscriptionPlan ?? 'starter'
-  const maxCards = PLAN_MAX_CARDS[plan] ?? 10
+  // max_staff_cards: use committed count if supplied, otherwise default 999
+  // (no artificial cap — the pricing tier and billing commitment are the real controls)
+  const maxCards = input.minCardsCommitted ?? 999
 
   // Derive slug from company name: lowercase, replace non-alphanumeric with hyphens
   const baseSlug = name
@@ -262,15 +291,37 @@ export async function createCompany(
     slug = `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`
   }
 
-  // Insert the company record with all onboarding fields
-  const { data: newCompany, error: insertError } = await supabaseAdmin
+  // Generate a unique referral code (8-char alphanumeric, no ambiguous chars)
+  const referralCode = await generateUniqueReferralCode()
+
+  // Resolve referred_by_company_id from referral code cookie (if provided)
+  let referredByCompanyId: string | null = null
+  if (input.referredByCode?.trim()) {
+    // referral_code column added in migration 20260415060000 — cast until types regenerated
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: referrer } = await (supabaseAdmin
+      .from('companies')
+      .select('id')
+      .eq('referral_code' as any, input.referredByCode.trim())
+      .maybeSingle() as any)
+    referredByCompanyId = (referrer as { id: string } | null)?.id ?? null
+  }
+
+  // Insert the company record with all onboarding fields.
+  // Columns added in migrations 20260415010000–20260415060000 (pricing_v2_enabled,
+  // is_qr_digital, billing_cycle, dpa_accepted_at, dpa_version, referral_code,
+  // referred_by_company_id) are not yet in the generated types.
+  // Re-run `npx supabase gen types typescript` after applying migrations to fix.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminAny = supabaseAdmin as any
+  const { data: newCompany, error: insertError } = await adminAny
     .from('companies')
     .insert({
       name,
       slug,
       website: input.website?.trim() || null,
       tagline: input.tagline?.trim() || null,
-      subscription_plan: plan,
+      subscription_plan: 'starter',
       subscription_status: 'trialing',
       max_staff_cards: maxCards,
       pricing_tier_id: input.pricingTierId ?? null,
@@ -285,20 +336,65 @@ export async function createCompany(
       brand_dark_mode: input.brandDarkMode ?? true,
       card_template: input.cardTemplate ?? 'minimal',
       primary_contact_name: input.primaryContactName?.trim() || null,
+      primary_contact_email: input.primaryContactEmail?.trim() || input.adminEmail?.trim() || null,
       primary_contact_phone: input.primaryContactPhone?.trim() || null,
       primary_contact_whatsapp: input.primaryContactWhatsapp?.trim() || null,
       nfc_cards_ordered: input.nfcCardsOrdered ?? 0,
       nfc_delivery_address: input.nfcDeliveryAddress?.trim() || null,
       internal_notes: input.internalNotes?.trim() || null,
+      pricing_v2_enabled: input.pricingV2Enabled ?? false,
+      is_qr_digital: input.isQrDigital ?? false,
+      billing_cycle: input.billingCycle ?? 'monthly',
+      dpa_accepted_at: new Date().toISOString(),
+      dpa_version: '1.0',
+      referral_code: referralCode,
+      referred_by_company_id: referredByCompanyId,
     })
     .select('id')
-    .single()
+    .single() as { data: { id: string } | null; error: { message: string } | null }
 
   if (insertError || !newCompany) {
     return { error: insertError?.message ?? 'Failed to create company.' }
   }
 
+  // Auto-create a card_orders record if NFC cards were ordered.
+  // card_orders table added in migration 20260415050000 — use adminAny until types regenerated.
+  if ((input.nfcCardsOrdered ?? 0) > 0) {
+    const { error: orderError } = await adminAny
+      .from('card_orders')
+      .insert({
+        company_id: newCompany.id,
+        quantity: input.nfcCardsOrdered,
+        status: 'pending',
+      })
+
+    if (orderError) {
+      // Non-fatal: log but don't fail company creation
+      // eslint-disable-next-line no-console
+      console.error('[createCompany] card_orders insert failed:', orderError.message)
+    }
+  }
+
+  // Insert referrals row if this company was referred.
+  // referrals table added in migration 20260415060000 — use adminAny until types regenerated.
+  if (referredByCompanyId) {
+    const { error: referralError } = await adminAny
+      .from('referrals')
+      .insert({
+        referrer_company_id: referredByCompanyId,
+        referred_company_id: newCompany.id,
+        status: 'pending',
+      })
+
+    if (referralError) {
+      // Non-fatal: log but don't fail company creation
+      // eslint-disable-next-line no-console
+      console.error('[createCompany] referrals insert failed:', referralError.message)
+    }
+  }
+
   // Optionally invite the first admin
+  let invitedUserEmail: string | null = null
   if (input.adminEmail?.trim()) {
     try {
       const { data: inviteData, error: inviteError } =
@@ -314,9 +410,28 @@ export async function createCompany(
           company_id: newCompany.id,
           role: 'admin',
         })
+        invitedUserEmail = input.adminEmail.trim()
       }
     } catch (err) {
       console.error('[createCompany] invite exception:', err)
+    }
+  }
+
+  // Send Day 0 welcome email
+  const recipientEmail = invitedUserEmail ?? input.primaryContactEmail?.trim() ?? null
+  if (recipientEmail) {
+    try {
+      const { error: emailError } = await sendWelcomeEmail({
+        companyName: name,
+        adminEmail: recipientEmail,
+        adminName: input.primaryContactName?.trim() ?? name,
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+      })
+      if (emailError) {
+        console.error('[createCompany] welcome email failed:', emailError)
+      }
+    } catch (err) {
+      console.error('[createCompany] welcome email exception:', err)
     }
   }
 
@@ -509,31 +624,10 @@ export async function deleteCompany(
     .eq('company_id', companyId)
   if (nfcError) return { error: `Failed to delete NFC cards: ${nfcError.message}` }
 
-  // 2b. Protect super_admin records from the company cascade.
-  //     Find any super_admins linked to this company and reassign them
-  //     to another company before deletion so they don't lose access.
-  const { data: superAdmins } = await supabaseAdmin
-    .from('company_admins')
-    .select('user_id')
-    .eq('company_id', companyId)
-    .eq('role', 'super_admin')
-
-  if (superAdmins && superAdmins.length > 0) {
-    const { data: otherCompany } = await supabaseAdmin
-      .from('companies')
-      .select('id')
-      .neq('id', companyId)
-      .limit(1)
-      .single()
-
-    if (otherCompany) {
-      await supabaseAdmin
-        .from('company_admins')
-        .update({ company_id: otherCompany.id })
-        .eq('company_id', companyId)
-        .eq('role', 'super_admin')
-    }
-  }
+  // Note: super_admin access is NOT at risk here.
+  // Migration 20260415000000_super_admin_nullable_company sets the super admin's
+  // company_id to NULL, so their company_admins row has no FK to any client company
+  // and is immune to this cascade.
 
   // 3. Delete the company — cascades staff_cards, company_admins, contacts
   const { error: companyError } = await supabaseAdmin
@@ -600,6 +694,37 @@ export async function inviteCompanyAdmin(
   }
 
   return {}
+}
+
+// ---------------------------------------------------------------------------
+// markOrderDelivered
+//
+// Sets a card_orders row to status = 'delivered' and records delivered_at.
+// Super admin only.
+// card_orders table added in migration 20260415050000 — use adminAny until types regenerated.
+// ---------------------------------------------------------------------------
+
+export async function markOrderDelivered(
+  orderId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  const { data: adminRecord } = await supabase
+    .from('company_admins').select('role').eq('user_id', user.id).single()
+  if (adminRecord?.role !== 'super_admin') return { error: 'Access denied — super admin only.' }
+
+  const adminAny = supabaseAdmin as any
+  const { error } = await adminAny
+    .from('card_orders')
+    .update({
+      status: 'delivered',
+      delivered_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+
+  return { error: error?.message }
 }
 
 // ---------------------------------------------------------------------------

@@ -27,6 +27,8 @@ import { deactivateStaffCard } from '@/lib/actions/cards'
 
 type NfcStatus = 'assigned' | 'unassigned' | 'deactivated'
 
+type CardHealth = 'green' | 'amber' | 'red'
+
 type StaffCardRow = {
   id: string
   full_name: string
@@ -38,6 +40,29 @@ type StaffCardRow = {
   nfc_slug: string | null
   nfc_status: NfcStatus
   view_count_30d: number
+  last_seen: string | null
+  health: CardHealth
+}
+
+function getHealth(lastSeen: string | null): CardHealth {
+  if (!lastSeen) return 'red'
+  const days = (Date.now() - new Date(lastSeen).getTime()) / (24 * 60 * 60 * 1000)
+  if (days <= 30) return 'green'
+  if (days <= 90) return 'amber'
+  return 'red'
+}
+
+function HealthDot({ health, lastSeen }: { health: CardHealth; lastSeen: string | null }) {
+  const color = health === 'green' ? 'bg-green-400' : health === 'amber' ? 'bg-amber-400' : 'bg-red-400'
+  const title = lastSeen
+    ? `Last seen ${new Date(lastSeen).toLocaleDateString('en-ZA')}`
+    : 'Never viewed'
+  return (
+    <span
+      className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${color}`}
+      title={title}
+    />
+  )
 }
 
 type Filter = 'all' | 'active' | 'deactivated' | 'unassigned'
@@ -75,23 +100,32 @@ export default function CardsPage() {
       return
     }
 
-    // Fetch 30-day view counts for all fetched cards
+    // Fetch 90-day views for all fetched cards (used for 30d count + last_seen health dot)
     const staffCardIds = rawCards.map(c => c.id)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
     const { data: views } =
       staffCardIds.length > 0
         ? await supabase
             .from('card_views')
-            .select('staff_card_id')
+            .select('staff_card_id, viewed_at')
             .in('staff_card_id', staffCardIds)
-            .gte('viewed_at', thirtyDaysAgo)
-        : { data: [] as Array<{ staff_card_id: string | null }> }
+            .gte('viewed_at', ninetyDaysAgo)
+            .order('viewed_at', { ascending: false })
+        : { data: [] as Array<{ staff_card_id: string | null; viewed_at: string }> }
 
-    // Build view count map
+    // Build view count (30d) and last_seen (90d) maps
     const viewCountMap = new Map<string, number>()
+    const lastSeenMap = new Map<string, string>()
     for (const view of views ?? []) {
-      if (view.staff_card_id) {
+      if (!view.staff_card_id) continue
+      // last_seen — first occurrence per card (already ordered desc)
+      if (!lastSeenMap.has(view.staff_card_id)) {
+        lastSeenMap.set(view.staff_card_id, view.viewed_at)
+      }
+      // 30d count
+      if (view.viewed_at >= thirtyDaysAgo) {
         viewCountMap.set(
           view.staff_card_id,
           (viewCountMap.get(view.staff_card_id) ?? 0) + 1
@@ -99,7 +133,7 @@ export default function CardsPage() {
       }
     }
 
-    // Normalise NFC data and merge view counts
+    // Normalise NFC data and merge view counts + health
     const enriched: StaffCardRow[] = rawCards.map(card => {
       const nfcCard = Array.isArray(card.nfc_cards)
         ? card.nfc_cards[0]
@@ -109,6 +143,8 @@ export default function CardsPage() {
       if (card.nfc_card_id && nfcCard) {
         nfcStatus = nfcCard.order_status === 'deactivated' ? 'deactivated' : 'assigned'
       }
+
+      const lastSeen = lastSeenMap.get(card.id) ?? null
 
       return {
         id: card.id,
@@ -121,6 +157,8 @@ export default function CardsPage() {
         nfc_slug: nfcCard?.slug ?? null,
         nfc_status: nfcStatus,
         view_count_30d: viewCountMap.get(card.id) ?? 0,
+        last_seen: lastSeen,
+        health: getHealth(lastSeen),
       }
     })
 
@@ -367,6 +405,7 @@ function StaffCardRow({ card, isDeactivating, onDeactivate }: StaffCardRowProps)
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
+              <HealthDot health={card.health} lastSeen={card.last_seen} />
               <span className="font-semibold text-slate-900 truncate">{card.full_name}</span>
               {!card.is_active && (
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">

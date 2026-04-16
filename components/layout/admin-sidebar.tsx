@@ -52,6 +52,20 @@ export default function AdminSidebar({ userName }: AdminSidebarProps) {
           </span>
           All Companies
         </Link>
+        <Link
+          href="/admin/fulfillment"
+          className={[
+            'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+            isActive('/admin/fulfillment')
+              ? 'bg-teal-50 text-teal-700 font-semibold shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 hover:-translate-y-px',
+          ].join(' ')}
+        >
+          <span className="material-symbols-outlined text-[20px] leading-none">
+            local_shipping
+          </span>
+          Fulfillment
+        </Link>
       </nav>
 
       {/* User profile + sign out */}

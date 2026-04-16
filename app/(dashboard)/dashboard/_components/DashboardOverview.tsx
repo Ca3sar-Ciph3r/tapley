@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { updateOnboardingStep } from '@/lib/actions/onboarding'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -226,6 +227,160 @@ function StatCard({ icon, iconBg, iconColor, label, value, badge, badgePositive,
 }
 
 // ---------------------------------------------------------------------------
+// Onboarding step keys
+// ---------------------------------------------------------------------------
+
+type OnboardingChecklist = {
+  company_profile?: boolean
+  first_card_created?: boolean
+  first_card_viewed?: boolean
+  second_card_or_nfc_assigned?: boolean
+  dismissed?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// OnboardingBanner sub-component
+// ---------------------------------------------------------------------------
+
+interface OnboardingBannerProps {
+  companyId: string
+  checklist: OnboardingChecklist
+  staffCardCount: number
+  hasViews: boolean
+  onDismiss: () => void
+}
+
+function OnboardingBanner({
+  companyId,
+  checklist,
+  staffCardCount,
+  hasViews,
+  onDismiss,
+}: OnboardingBannerProps) {
+  const [dismissing, setDismissing] = useState(false)
+
+  // Auto-compute step completion based on available data
+  const steps = [
+    {
+      key: 'company_profile' as const,
+      label: 'Set up company profile',
+      desc: 'Add your logo and brand colour',
+      href: '/dashboard/branding',
+      complete: checklist.company_profile ?? false,
+    },
+    {
+      key: 'first_card_created' as const,
+      label: 'Create your first card',
+      desc: 'Add a staff member',
+      href: '/dashboard/cards/new',
+      complete: staffCardCount > 0,
+    },
+    {
+      key: 'first_card_viewed' as const,
+      label: 'Get your first tap',
+      desc: 'Share or tap your NFC card',
+      href: '/dashboard/cards',
+      complete: hasViews,
+    },
+    {
+      key: 'second_card_or_nfc_assigned' as const,
+      label: 'Assign an NFC card',
+      desc: 'Link a physical card to a staff member',
+      href: '/dashboard/cards',
+      complete: checklist.second_card_or_nfc_assigned ?? false,
+    },
+  ]
+
+  const completedCount = steps.filter(s => s.complete).length
+  const progress = Math.round((completedCount / steps.length) * 100)
+
+  async function handleDismiss() {
+    setDismissing(true)
+    await updateOnboardingStep(companyId, 5, true)
+    onDismiss()
+  }
+
+  return (
+    <div className="glass-panel rounded-2xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-teal-100/50">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-[20px] text-teal-600 leading-none">
+              rocket_launch
+            </span>
+          </div>
+          <div>
+            <h3 className="font-jakarta font-bold text-slate-900 text-sm">
+              Getting started — {completedCount} of {steps.length} complete
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Complete these steps to get the most out of Tapley Connect
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleDismiss}
+          disabled={dismissing}
+          title="Dismiss"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors flex-shrink-0"
+        >
+          <span className="material-symbols-outlined text-[18px] leading-none">
+            {dismissing ? 'progress_activity' : 'close'}
+          </span>
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full h-1.5 bg-slate-100 rounded-full mb-5">
+        <div
+          className="h-1.5 bg-teal-400 rounded-full transition-all duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Steps */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {steps.map(step => (
+          <Link
+            key={step.key}
+            href={step.complete ? '#' : step.href}
+            className={[
+              'flex items-start gap-2.5 p-3 rounded-xl transition-colors',
+              step.complete
+                ? 'bg-teal-50/60 cursor-default'
+                : 'bg-slate-50 hover:bg-slate-100',
+            ].join(' ')}
+          >
+            <div
+              className={[
+                'w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5',
+                step.complete ? 'bg-teal-500' : 'border-2 border-slate-200',
+              ].join(' ')}
+            >
+              {step.complete && (
+                <span className="material-symbols-outlined text-[12px] text-white leading-none">
+                  check
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p
+                className={`text-xs font-semibold leading-tight ${
+                  step.complete ? 'text-teal-700 line-through decoration-teal-400/60' : 'text-slate-700'
+                }`}
+              >
+                {step.label}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{step.desc}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -235,6 +390,10 @@ export function DashboardOverview() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [chartMode, setChartMode] = useState<ChartMode>('30d')
+  const [companyId, setCompanyId] = useState<string | null>(null)
+  const [onboardingChecklist, setOnboardingChecklist] = useState<OnboardingChecklist | null>(null)
+  const [referralCode, setReferralCode] = useState<string | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -246,7 +405,7 @@ export function DashboardOverview() {
     const supabase = createClient()
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [viewsResult, staffResult] = await Promise.all([
+    const [viewsResult, staffResult, companyResult] = await Promise.all([
       supabase
         .from('card_views')
         .select('staff_card_id, viewed_at, source')
@@ -256,6 +415,10 @@ export function DashboardOverview() {
         .from('staff_cards')
         .select('id, full_name, job_title, photo_url, is_active')
         .order('full_name', { ascending: true }),
+      (supabase as any)
+        .from('companies')
+        .select('id, onboarding_checklist, referral_code')
+        .single(),
     ])
 
     if (viewsResult.error) {
@@ -266,6 +429,16 @@ export function DashboardOverview() {
 
     setViews((viewsResult.data ?? []) as RawView[])
     setStaffCards((staffResult.data ?? []) as StaffCard[])
+
+    if (companyResult.data) {
+      setCompanyId(companyResult.data.id ?? null)
+      setOnboardingChecklist(companyResult.data.onboarding_checklist ?? null)
+      setReferralCode(companyResult.data.referral_code ?? null)
+      if (companyResult.data.onboarding_checklist?.dismissed) {
+        setBannerDismissed(true)
+      }
+    }
+
     setLoading(false)
   }
 
@@ -358,8 +531,25 @@ export function DashboardOverview() {
   // Render
   // ---------------------------------------------------------------------------
 
+  const showOnboardingBanner =
+    !bannerDismissed &&
+    companyId !== null &&
+    onboardingChecklist !== null &&
+    !onboardingChecklist.dismissed
+
   return (
     <div className="px-10 py-10 space-y-7">
+      {/* Onboarding banner */}
+      {showOnboardingBanner && companyId && (
+        <OnboardingBanner
+          companyId={companyId}
+          checklist={onboardingChecklist!}
+          staffCardCount={staffCards.length}
+          hasViews={views.length > 0}
+          onDismiss={() => setBannerDismissed(true)}
+        />
+      )}
+
       {/* Page header */}
       <div className="flex items-end justify-between">
         <div>
@@ -550,6 +740,37 @@ export function DashboardOverview() {
           )}
         </div>
       </div>
+
+      {/* Referral widget */}
+      {referralCode && (
+        <div className="glass-panel rounded-2xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-[20px] text-teal-600 leading-none">
+                card_giftcard
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                Earn free months — refer other businesses
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Your referral code:{' '}
+                <span className="font-mono font-bold text-slate-700 tracking-wide">
+                  {referralCode}
+                </span>
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/refer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold transition-colors shadow-sm flex-shrink-0"
+          >
+            <span className="material-symbols-outlined text-[18px] leading-none">share</span>
+            Share &amp; Earn
+          </Link>
+        </div>
+      )}
 
       {/* Recent Activity */}
       <div className="glass-panel rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] overflow-hidden">
