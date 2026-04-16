@@ -699,7 +699,7 @@ export async function inviteCompanyAdmin(
 // ---------------------------------------------------------------------------
 // markOrderDelivered
 //
-// Sets a card_orders row to status = 'delivered' and records delivered_at.
+// Sets a card_orders row to status = 'delivered' and records actual_delivery.
 // Super admin only.
 // card_orders table added in migration 20260415050000 — use adminAny until types regenerated.
 // ---------------------------------------------------------------------------
@@ -720,7 +720,7 @@ export async function markOrderDelivered(
     .from('card_orders')
     .update({
       status: 'delivered',
-      delivered_at: new Date().toISOString(),
+      actual_delivery: new Date().toISOString(),
     })
     .eq('id', orderId)
 

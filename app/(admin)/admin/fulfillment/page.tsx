@@ -34,10 +34,10 @@ type CardOrder = {
   order_date: string | null
   estimated_delivery: string | null
   tracking_number: string | null
-  cost_zar: number | null
+  total_cost: number | null
   notes: string | null
   status: OrderStatus
-  delivered_at: string | null
+  actual_delivery: string | null
   created_at: string
 }
 
@@ -145,7 +145,7 @@ function OrderRow({
 
       {/* Cost */}
       <td className="px-4 py-4 text-right">
-        <span className="text-xs text-slate-600 tabular-nums">{formatZar(order.cost_zar)}</span>
+        <span className="text-xs text-slate-600 tabular-nums">{formatZar(order.total_cost)}</span>
       </td>
 
       {/* Notes */}
@@ -174,7 +174,7 @@ function OrderRow({
           </button>
         )}
         {order.status === 'delivered' && (
-          <span className="text-xs text-slate-400">{formatDate(order.delivered_at)}</span>
+          <span className="text-xs text-slate-400">{formatDate(order.actual_delivery)}</span>
         )}
       </td>
     </tr>
@@ -200,7 +200,7 @@ export default function FulfillmentPage() {
 
     const { data, error } = await supabaseAny
       .from('card_orders')
-      .select('id, company_id, quantity, order_date, estimated_delivery, tracking_number, cost_zar, notes, status, delivered_at, created_at, companies(name)')
+      .select('id, company_id, quantity, order_date, estimated_delivery, tracking_number, total_cost, notes, status, actual_delivery, created_at, companies(name)')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -219,10 +219,10 @@ export default function FulfillmentPage() {
       order_date: row.order_date,
       estimated_delivery: row.estimated_delivery,
       tracking_number: row.tracking_number,
-      cost_zar: row.cost_zar,
+      total_cost: row.total_cost,
       notes: row.notes,
       status: row.status as OrderStatus,
-      delivered_at: row.delivered_at,
+      actual_delivery: row.actual_delivery,
       created_at: row.created_at,
     }))
 
@@ -256,8 +256,8 @@ export default function FulfillmentPage() {
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const monthlyCost = orders
-    .filter(o => o.created_at >= monthStart && o.cost_zar !== null)
-    .reduce((sum, o) => sum + (o.cost_zar ?? 0), 0)
+    .filter(o => o.created_at >= monthStart && o.total_cost !== null)
+    .reduce((sum, o) => sum + (o.total_cost ?? 0), 0)
 
   const overdueCount = orders.filter(isOverdue).length
 
