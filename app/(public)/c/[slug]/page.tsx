@@ -19,6 +19,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { buildWaLink, getFirstName } from '@/lib/utils/whatsapp'
 import { ViewEventTracker } from '@/components/card/view-event-tracker'
 import { CardActions } from '@/components/card/card-actions'
+import { LeadCaptureSheet } from '@/components/card/lead-capture-sheet'
 import type { Tables } from '@/lib/types/database'
 import type { Json } from '@/lib/types/database'
 
@@ -218,6 +219,16 @@ export default async function CardPage({ params }: PageProps) {
     return (
       <main className="min-h-screen bg-white">
         <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
+        <LeadCaptureSheet
+          staffCardId={staffCard.id}
+          companyId={staffCard.company_id}
+          staffName={staffCard.full_name}
+          companyName={company?.name ?? ''}
+          logoUrl={company?.logo_url ?? null}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+          isDark={isDark}
+        />
         <div className="mx-auto max-w-sm pb-4">
 
           {/* Hero — full-bleed primary colour: logo + photo + name + title */}
@@ -354,6 +365,16 @@ export default async function CardPage({ params }: PageProps) {
     return (
       <main className="min-h-screen bg-white">
         <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
+        <LeadCaptureSheet
+          staffCardId={staffCard.id}
+          companyId={staffCard.company_id}
+          staffName={staffCard.full_name}
+          companyName={company?.name ?? ''}
+          logoUrl={company?.logo_url ?? null}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+          isDark={isDark}
+        />
 
         {/* Company logo — full width header */}
         <header
@@ -486,6 +507,16 @@ export default async function CardPage({ params }: PageProps) {
     >
       {/* View event — fires after hydration, fire-and-forget, never blocks render */}
       <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
+      <LeadCaptureSheet
+        staffCardId={staffCard.id}
+        companyId={staffCard.company_id}
+        staffName={staffCard.full_name}
+        companyName={company?.name ?? ''}
+        logoUrl={company?.logo_url ?? null}
+        primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        isDark={isDark}
+      />
 
       <div className="mx-auto max-w-sm pb-4">
 
