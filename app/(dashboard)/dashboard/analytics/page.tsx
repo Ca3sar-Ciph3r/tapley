@@ -391,6 +391,8 @@ export default function AnalyticsPage() {
   const [chartMode, setChartMode] = useState<ChartMode>('daily')
   const [rawViews, setRawViews] = useState<RawView[]>([])
   const [staffCards, setStaffCards] = useState<RawStaffCard[]>([])
+  const [contactsCount30d, setContactsCount30d] = useState(0)
+  const [contactsCountPrev30d, setContactsCountPrev30d] = useState(0)
 
   useEffect(() => {
     loadData()
@@ -404,7 +406,10 @@ export default function AnalyticsPage() {
     const supabase = createClient()
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [viewsResult, cardsResult] = await Promise.all([
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+
+    const [viewsResult, cardsResult, contacts30dResult, contactsPrev30dResult] = await Promise.all([
       supabase
         .from('card_views')
         .select('staff_card_id, viewed_at, session_id, os, wa_clicked, vcf_downloaded')
@@ -413,6 +418,15 @@ export default function AnalyticsPage() {
         .from('staff_cards')
         .select('id, full_name, job_title, photo_url')
         .eq('is_active', true),
+      supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', thirtyDaysAgo),
+      supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', sixtyDaysAgo)
+        .lt('created_at', thirtyDaysAgo),
     ])
 
     if (viewsResult.error || cardsResult.error) {
@@ -423,6 +437,8 @@ export default function AnalyticsPage() {
 
     setRawViews((viewsResult.data ?? []) as RawView[])
     setStaffCards((cardsResult.data ?? []) as RawStaffCard[])
+    setContactsCount30d(contacts30dResult.count ?? 0)
+    setContactsCountPrev30d(contactsPrev30dResult.count ?? 0)
     setLoading(false)
   }
 
@@ -457,6 +473,11 @@ export default function AnalyticsPage() {
   const conversions = views30d.filter(v => v.wa_clicked || v.vcf_downloaded).length
   const conversionRate =
     totalViews > 0 ? Math.round((conversions / totalViews) * 1000) / 10 : 0
+
+  const contactsChange =
+    contactsCountPrev30d > 0
+      ? Math.round(((contactsCount30d - contactsCountPrev30d) / contactsCountPrev30d) * 100)
+      : null
 
   // Device breakdown
   const iosTaps = views30d.filter(v => v.os === 'ios').length
@@ -525,7 +546,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Row 1: Stat cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard
           icon="ads_click"
           iconBg="rgba(0,201,167,0.1)"
@@ -557,6 +578,14 @@ export default function AnalyticsPage() {
           label="Conversion Rate"
           value={`${conversionRate}%`}
           change={null}
+        />
+        <StatCard
+          icon="contacts"
+          iconBg="rgba(20,184,166,0.1)"
+          iconColor="#14b8a6"
+          label="Leads Captured"
+          value={contactsCount30d.toLocaleString()}
+          change={contactsChange}
         />
       </div>
 
