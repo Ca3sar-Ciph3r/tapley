@@ -326,77 +326,68 @@ export default function CrmPage() {
 
   async function loadContacts(cid: string | null) {
     const supabase = createClient()
-    const supabaseAny = supabase as unknown as {
-      from: (t: string) => unknown
+
+    type RawContact = {
+      id: string
+      full_name: string | null
+      email: string | null
+      phone: string | null
+      whatsapp_number: string | null
+      company_name: string | null
+      job_title: string | null
+      notes: string | null
+      source: string
+      created_at: string
+      staff_card_id: string | null
     }
 
-    type QueryBuilder = {
-      select: (q: string) => QueryBuilder
-      eq: (col: string, val: string) => QueryBuilder
-      order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown[] | null; error: { message: string } | null }>
-    }
-
-    let query = (supabaseAny.from('contacts') as QueryBuilder)
-      .select(`
-        id,
-        full_name,
-        email,
-        phone,
-        whatsapp_number,
-        company_name,
-        job_title,
-        notes,
-        source,
-        created_at,
-        staff_card_id,
-        staff_cards(full_name)
-      `)
+    let contactsQuery = supabase
+      .from('contacts')
+      .select('id, full_name, email, phone, whatsapp_number, company_name, job_title, notes, source, created_at, staff_card_id')
+      .order('created_at', { ascending: false })
 
     if (cid) {
-      query = query.eq('company_id', cid)
+      contactsQuery = contactsQuery.eq('company_id', cid)
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false })
+    const { data, error } = await contactsQuery
 
     if (error) {
-      setLoadError('Failed to load contacts.')
+      setLoadError(`Failed to load contacts: ${error.message}`)
       setLoading(false)
       return
     }
 
-    const mapped: Contact[] = (data ?? []).map((r: unknown) => {
-      const row = r as {
-        id: string
-        full_name: string | null
-        email: string | null
-        phone: string | null
-        whatsapp_number: string | null
-        company_name: string | null
-        job_title: string | null
-        notes: string | null
-        source: string
-        created_at: string
-        staff_card_id: string | null
-        staff_cards: { full_name: string } | { full_name: string }[] | null
+    const rows = (data ?? []) as RawContact[]
+
+    // Resolve staff card names in a separate query to avoid FK join issues
+    const staffCardIds = [...new Set(rows.map(r => r.staff_card_id).filter(Boolean))] as string[]
+    const staffCardNames: Record<string, string> = {}
+
+    if (staffCardIds.length > 0) {
+      const { data: cards } = await supabase
+        .from('staff_cards')
+        .select('id, full_name')
+        .in('id', staffCardIds)
+      for (const c of cards ?? []) {
+        staffCardNames[c.id] = c.full_name
       }
-      const staffName = Array.isArray(row.staff_cards)
-        ? (row.staff_cards[0]?.full_name ?? null)
-        : (row.staff_cards?.full_name ?? null)
-      return {
-        id: row.id,
-        fullName: row.full_name,
-        email: row.email,
-        phone: row.phone,
-        whatsappNumber: row.whatsapp_number,
-        companyName: row.company_name,
-        jobTitle: row.job_title,
-        notes: row.notes,
-        source: row.source as ContactSource,
-        createdAt: row.created_at,
-        staffCardId: row.staff_card_id,
-        staffCardName: staffName,
-      }
-    })
+    }
+
+    const mapped: Contact[] = rows.map(row => ({
+      id: row.id,
+      fullName: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      whatsappNumber: row.whatsapp_number,
+      companyName: row.company_name,
+      jobTitle: row.job_title,
+      notes: row.notes,
+      source: row.source as ContactSource,
+      createdAt: row.created_at,
+      staffCardId: row.staff_card_id,
+      staffCardName: row.staff_card_id ? (staffCardNames[row.staff_card_id] ?? null) : null,
+    }))
 
     setContacts(mapped)
     setLoading(false)
