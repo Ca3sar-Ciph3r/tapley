@@ -35,6 +35,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/dashboard', exact: true },
   { label: 'Team Cards', icon: 'groups', href: '/dashboard/cards' },
   { label: 'Analytics', icon: 'monitoring', href: '/dashboard/analytics' },
+  { label: 'Contacts', icon: 'contacts', href: '/dashboard/crm' },
   { label: 'Refer & Earn', icon: 'card_giftcard', href: '/dashboard/refer' },
   { label: 'Branding', icon: 'palette', href: '/dashboard/branding' },
   { label: 'Billing', icon: 'receipt_long', href: '/dashboard/billing' },

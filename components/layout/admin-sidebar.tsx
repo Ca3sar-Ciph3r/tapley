@@ -66,6 +66,48 @@ export default function AdminSidebar({ userName }: AdminSidebarProps) {
           </span>
           Fulfillment
         </Link>
+        <Link
+          href="/admin/analytics"
+          className={[
+            'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+            isActive('/admin/analytics')
+              ? 'bg-teal-50 text-teal-700 font-semibold shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 hover:-translate-y-px',
+          ].join(' ')}
+        >
+          <span className="material-symbols-outlined text-[20px] leading-none">
+            bar_chart
+          </span>
+          Analytics
+        </Link>
+        <Link
+          href="/admin/referrals"
+          className={[
+            'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+            isActive('/admin/referrals')
+              ? 'bg-teal-50 text-teal-700 font-semibold shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 hover:-translate-y-px',
+          ].join(' ')}
+        >
+          <span className="material-symbols-outlined text-[20px] leading-none">
+            people
+          </span>
+          Referrals
+        </Link>
+        <Link
+          href="/admin/billing"
+          className={[
+            'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+            isActive('/admin/billing')
+              ? 'bg-teal-50 text-teal-700 font-semibold shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 hover:-translate-y-px',
+          ].join(' ')}
+        >
+          <span className="material-symbols-outlined text-[20px] leading-none">
+            receipt_long
+          </span>
+          Billing
+        </Link>
       </nav>
 
       {/* User profile + sign out */}
