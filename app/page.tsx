@@ -1,40 +1,35 @@
-'use client'
+import { MarketingNav } from '@/components/layout/MarketingNav'
+import { MarketingFooter } from '@/components/layout/MarketingFooter'
+import { Hero } from '@/components/sections/Hero'
+import { LogoBar } from '@/components/sections/LogoBar'
+import { Problem } from '@/components/sections/Problem'
+import { HowItWorks } from '@/components/sections/HowItWorks'
+import { Features } from '@/components/sections/Features'
+import { SocialProof } from '@/components/sections/SocialProof'
+import { UseCases } from '@/components/sections/UseCases'
+import { Demo } from '@/components/sections/Demo'
+import { FAQ } from '@/components/sections/FAQ'
+import { Pricing } from '@/components/sections/Pricing'
+import { FinalCTA } from '@/components/sections/FinalCTA'
 
-// app/page.tsx
-//
-// Root URL redirects to /login.
-// Captures ?ref=<code> query param and stores it as a cookie so createCompany
-// can credit the referring company when the admin signs up.
-//
-// useSearchParams() must be wrapped in <Suspense> — Next.js 15 requirement
-// for any component that calls useSearchParams() at the page level.
-
-import { Suspense, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-
-const REF_COOKIE = 'tapley_ref'
-const REF_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
-
-function RefCaptureAndRedirect() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-
-  useEffect(() => {
-    const ref = searchParams.get('ref')
-    if (ref) {
-      // Store for up to 30 days — createCompany reads this to credit the referrer
-      document.cookie = `${REF_COOKIE}=${encodeURIComponent(ref)}; max-age=${REF_COOKIE_MAX_AGE}; path=/; SameSite=Lax`
-    }
-    router.replace('/login')
-  }, [router, searchParams])
-
-  return null
-}
-
-export default function RootPage() {
+export default function HomePage() {
   return (
-    <Suspense>
-      <RefCaptureAndRedirect />
-    </Suspense>
+    <div className="marketing-page bg-[#080808]">
+      <MarketingNav />
+      <main>
+        <Hero />
+        <LogoBar />
+        <Problem />
+        <HowItWorks />
+        <Features />
+        <SocialProof />
+        <UseCases />
+        <Demo />
+        <FAQ />
+        <Pricing />
+        <FinalCTA />
+      </main>
+      <MarketingFooter />
+    </div>
   )
 }

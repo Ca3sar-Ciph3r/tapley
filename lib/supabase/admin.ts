@@ -24,21 +24,24 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  throw new Error('Missing env var: NEXT_PUBLIC_SUPABASE_URL')
-}
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing env var: SUPABASE_SERVICE_ROLE_KEY')
-}
-
-export const supabaseAdmin = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
+function createAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url) throw new Error('Missing env var: NEXT_PUBLIC_SUPABASE_URL')
+  if (!key) throw new Error('Missing env var: SUPABASE_SERVICE_ROLE_KEY')
+  return createClient<Database>(url, key, {
     auth: {
-      // Prevent the admin client from persisting sessions or auto-refreshing tokens
       autoRefreshToken: false,
       persistSession: false,
     },
-  }
-)
+  })
+}
+
+let _adminClient: ReturnType<typeof createAdminClient> | null = null
+
+export const supabaseAdmin = new Proxy({} as ReturnType<typeof createAdminClient>, {
+  get(_target, prop) {
+    if (!_adminClient) _adminClient = createAdminClient()
+    return (_adminClient as Record<string | symbol, unknown>)[prop]
+  },
+})
