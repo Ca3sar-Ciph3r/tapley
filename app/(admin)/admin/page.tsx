@@ -605,7 +605,7 @@ export default function SuperAdminPage() {
     ])
 
     if (companiesResult.error) {
-      setLoadError(`Failed to load companies: ${companiesResult.error.message} (${companiesResult.error.code})`)
+      setLoadError('Failed to load companies. Please refresh.')
       setLoading(false)
       return
     }
