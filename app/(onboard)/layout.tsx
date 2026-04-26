@@ -6,8 +6,8 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Get Started — Tapley Connect',
-  description: 'Set up your company's digital business cards in minutes.',
+  title: "Get Started — Tapley Connect",
+  description: "Set up your company's digital business cards in minutes.",
 }
 
 export default function OnboardLayout({ children }: { children: React.ReactNode }) {
