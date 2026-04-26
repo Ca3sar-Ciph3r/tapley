@@ -1,8 +1,8 @@
 // app/(onboard)/onboard/success/page.tsx
 //
 // Rendering:  Server component (static OK — no personalised data needed).
-// Shown after Stripe Checkout completes successfully.
-// The actual activation is handled by the webhook (checkout.session.completed).
+// Shown after PayFast redirects back on successful payment (return_url).
+// The actual activation is handled asynchronously by /api/webhooks/payfast (ITN).
 
 import Link from 'next/link'
 

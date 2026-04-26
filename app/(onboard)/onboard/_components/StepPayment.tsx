@@ -2,11 +2,20 @@
 
 // app/(onboard)/onboard/_components/StepPayment.tsx
 //
-// Step 5: Order summary + redirect to Stripe Checkout.
+// Step 5: Order summary + redirect to PayFast for the one-time setup fee.
+//
+// Flow:
+//   1. User reviews order summary and clicks "Pay securely with PayFast"
+//   2. createPayFastSetupFeeParams() server action builds signed form params
+//   3. PayFastForm renders a hidden form and auto-submits → browser navigates to PayFast
+//   4. On success PayFast redirects to /onboard/success; on cancel to /onboard/cancelled
+//   5. PayFast sends ITN to /api/webhooks/payfast which activates the company
 
 import { useState } from 'react'
 import { formatZar } from '@/lib/utils/pricing'
-import { createOnboardingCheckoutSession } from '@/lib/actions/self-service-onboarding'
+import { createPayFastSetupFeeParams } from '@/lib/actions/self-service-onboarding'
+import { PayFastForm } from '@/components/billing/PayFastForm'
+import type { PayFastFormData } from '@/lib/payfast/buildPaymentForm'
 import type { WizardAccount, WizardBrand, WizardCompany, WizardPlan } from '../_types'
 
 interface StepPaymentProps {
@@ -21,34 +30,49 @@ interface StepPaymentProps {
 export function StepPayment({ plan, company, account, brand: _brand, companyId, onBack }: StepPaymentProps) {
   const [redirecting, setRedirecting] = useState(false)
   const [error, setError]             = useState<string | null>(null)
+  const [formData, setFormData]       = useState<PayFastFormData | null>(null)
 
   async function handleCheckout() {
     setRedirecting(true)
     setError(null)
 
-    const result = await createOnboardingCheckoutSession({
+    const result = await createPayFastSetupFeeParams({
       companyId,
-      companyName:   company.name,
-      setupFeeZar:   plan.setupTotalZar,
-      monthlyFeeZar: plan.monthlyTotalZar,
-      planName:      plan.tierName,
-      adminName:     `${account.firstName} ${account.lastName}`,
-      adminEmail:    account.email,
-      cardCount:     plan.cardCount,
+      planName:       plan.tierName,
+      adminFirstName: account.firstName,
+      adminLastName:  account.lastName,
+      adminEmail:     account.email,
+      cardCount:      plan.cardCount,
+      setupFeeZar:    plan.setupTotalZar,
+      monthlyFeeZar:  plan.monthlyTotalZar,
     })
 
-    if (result.error || !result.checkoutUrl) {
-      setError(result.error ?? 'Failed to start checkout. Please try again.')
+    if (result.error || !result.formData) {
+      setError(result.error ?? 'Failed to initiate payment. Please try again.')
       setRedirecting(false)
       return
     }
 
-    window.location.href = result.checkoutUrl
+    // Set form data — PayFastForm auto-submits on mount, navigating to PayFast
+    setFormData(result.formData)
   }
 
   const monthlyDisplay = plan.billingCycle === 'annual'
     ? plan.annualDiscountedTotalZar / 12
     : plan.monthlyTotalZar
+
+  // Once form data is set, show a brief redirect message while the form submits
+  if (formData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <span className="material-symbols-outlined text-[32px] text-teal-600 animate-spin">
+          progress_activity
+        </span>
+        <p className="text-slate-500 text-sm">Redirecting to PayFast…</p>
+        <PayFastForm formData={formData} />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -103,11 +127,11 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
         </div>
       </div>
 
-      {/* Payment badges */}
+      {/* Trust badges */}
       <div className="flex items-center gap-3 mb-6">
         <div className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="material-symbols-outlined text-[14px] text-teal-600">lock</span>
-          Secured by Stripe
+          Secured by PayFast
         </div>
         <div className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="material-symbols-outlined text-[14px] text-teal-600">verified_user</span>
@@ -135,7 +159,7 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
           {redirecting ? (
             <>
               <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-              Redirecting to Stripe…
+              Preparing payment…
             </>
           ) : (
             <>

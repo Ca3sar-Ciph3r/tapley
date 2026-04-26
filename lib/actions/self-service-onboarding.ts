@@ -4,19 +4,21 @@
 //
 // Server actions for the self-service onboarding wizard.
 //
-// createPendingCompany()         — Step 3 (Account). Creates company + company_admins
-//                                  row using supabaseAdmin to bypass RLS. Called after
-//                                  supabase.auth.signUp() returns a valid session.
+// createPendingCompany()          — Step 3 (Account). Creates company + company_admins
+//                                   row using supabaseAdmin to bypass RLS. Called after
+//                                   supabase.auth.signUp() returns a valid session.
 //
-// saveOnboardingBranding()       — Step 4 (Branding). Updates brand columns on the
-//                                  pending company row.
+// saveOnboardingBranding()        — Step 4 (Branding). Updates brand columns on the
+//                                   pending company row.
 //
-// createOnboardingCheckoutSession() — Step 5 (Payment). Creates a Stripe Checkout
-//                                  session for the one-time setup fee and returns the URL.
+// createPayFastSetupFeeParams()   — Step 5 (Payment). Builds signed PayFast form params
+//                                   for the one-time setup fee. Returned to the client
+//                                   which renders a hidden form and auto-submits it.
 
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { getStripe } from '@/lib/stripe/client'
+import { buildPayFastPaymentForm, nextMonthBillingDate } from '@/lib/payfast/buildPaymentForm'
+import type { PayFastFormData } from '@/lib/payfast/buildPaymentForm'
 import type { BillingCycle } from '@/lib/utils/pricing'
 
 // ---------------------------------------------------------------------------
@@ -194,36 +196,42 @@ export async function saveOnboardingBranding(
 }
 
 // ---------------------------------------------------------------------------
-// createOnboardingCheckoutSession
+// createPayFastSetupFeeParams
 //
-// Creates a Stripe Checkout session for the one-time setup fee.
-// Returns the Checkout URL to redirect the user.
+// Builds signed PayFast form params for the one-time setup fee payment.
+// Returns the form action URL and hidden field data to the client component
+// (PayFastForm.tsx) which renders and auto-submits the form.
+//
+// Security:
+//   - Verifies session via server-side supabase.auth.getUser()
+//   - Confirms user is admin for the given companyId
+//   - Signature generated server-side using PAYFAST_PASSPHRASE — never exposed to client
 // ---------------------------------------------------------------------------
 
-export type CreateOnboardingCheckoutInput = {
+export type CreatePayFastSetupFeeInput = {
   companyId:      string
-  companyName:    string
-  setupFeeZar:    number
-  monthlyFeeZar:  number
   planName:       string
-  adminName:      string
+  adminFirstName: string
+  adminLastName:  string
   adminEmail:     string
   cardCount:      number
+  setupFeeZar:    number
+  monthlyFeeZar:  number
 }
 
-export type CreateOnboardingCheckoutResult = {
-  checkoutUrl?: string
+export type CreatePayFastSetupFeeResult = {
+  formData?: PayFastFormData
   error?: string
 }
 
-export async function createOnboardingCheckoutSession(
-  input: CreateOnboardingCheckoutInput,
-): Promise<CreateOnboardingCheckoutResult> {
+export async function createPayFastSetupFeeParams(
+  input: CreatePayFastSetupFeeInput,
+): Promise<CreatePayFastSetupFeeResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorised' }
 
-  // Verify user is admin for this company
+  // Verify the authenticated user is an admin for this company
   const { data: adminRow } = await supabaseAdmin
     .from('company_admins')
     .select('role')
@@ -234,48 +242,30 @@ export async function createOnboardingCheckoutSession(
   if (!adminRow) return { error: 'Access denied.' }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'
-  const stripe = getStripe()
 
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: input.adminEmail,
-      line_items: [
-        {
-          price_data: {
-            currency: 'zar',
-            product_data: {
-              name: `Tapley Connect — ${input.planName} Plan Setup`,
-              description: `One-time setup fee for ${input.cardCount} digital business cards. Monthly subscription invoiced separately.`,
-            },
-            unit_amount: Math.round(input.setupFeeZar * 100),
-          },
-          quantity: 1,
-        },
-      ],
-      payment_intent_data: {
-        metadata: {
-          tapley_company_id: input.companyId,
-          tapley_type:       'onboarding_setup_fee',
-        },
-      },
-      metadata: {
-        tapley_company_id: input.companyId,
-        tapley_type:       'onboarding_setup_fee',
-        company_name:      input.companyName,
-        plan_name:         input.planName,
-        admin_name:        input.adminName,
-        admin_email:       input.adminEmail,
-        card_count:        String(input.cardCount),
-        monthly_fee_zar:   String(input.monthlyFeeZar),
-      },
-      success_url: `${appUrl}/onboard/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${appUrl}/onboard/cancelled`,
-    })
+  // custom_str layout (onboarding):
+  //   str3 = planName, str4 = cardCount, str5 = monthlyTotalZar
+  const formData = buildPayFastPaymentForm({
+    companyId:      input.companyId,
+    paymentType:    'onboarding',
+    adminFirstName: input.adminFirstName,
+    adminLastName:  input.adminLastName,
+    adminEmail:     input.adminEmail,
+    setupFeeZar:    input.setupFeeZar,
+    itemName:       `Tapley Connect — ${input.planName} Plan Setup`,
+    customStr3:     input.planName,
+    customStr4:     String(input.cardCount),
+    customStr5:     String(input.monthlyFeeZar),
+    returnUrl:      `${appUrl}/onboard/success`,
+    cancelUrl:      `${appUrl}/onboard/cancelled`,
+    notifyUrl:      `${appUrl}/api/webhooks/payfast`,
+    subscription: {
+      recurringAmountZar: input.monthlyFeeZar,
+      billingDate:        nextMonthBillingDate(),
+      frequency:          3,
+      cycles:             0,
+    },
+  })
 
-    if (!session.url) return { error: 'Stripe did not return a checkout URL.' }
-    return { checkoutUrl: session.url }
-  } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Failed to create checkout session.' }
-  }
+  return { formData }
 }

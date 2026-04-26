@@ -10,7 +10,7 @@
 //   2. Company   — name, industry, website, tagline
 //   3. Account   — signUp + createPendingCompany()
 //   4. Branding  — logo, colours, card template
-//   5. Payment   — Stripe Checkout redirect
+//   5. Payment   — PayFast setup fee redirect
 
 import { useState } from 'react'
 import { WizardProgress } from './_components/WizardProgress'
@@ -129,7 +129,7 @@ export default function OnboardPage() {
           {/* Trust footer */}
           <p className="text-center text-xs text-slate-400 mt-6">
             Your data is stored securely in South Africa and protected under POPIA.
-            Payments processed by Stripe — we never store your card details.
+            Payments processed by PayFast — we never store your card details.
           </p>
         </div>
       </main>

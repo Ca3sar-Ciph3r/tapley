@@ -13,6 +13,8 @@
 //   - Referral credits earned
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { getImpersonationState } from '@/lib/actions/admin'
 
@@ -95,6 +97,9 @@ function AmountCell({ amount, type }: { amount: number; type: string }) {
 // ---------------------------------------------------------------------------
 
 export default function BillingPage() {
+  const searchParams = useSearchParams()
+  const cardsAdded = searchParams.get('added')
+
   const [plan, setPlan] = useState<PlanSummary | null>(null)
   const [records, setRecords] = useState<BillingRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -194,6 +199,15 @@ export default function BillingPage() {
         <p className="text-sm text-slate-500 mt-1">Subscription details and payment history</p>
       </div>
 
+      {cardsAdded && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl bg-teal-50 border border-teal-100">
+          <span className="material-symbols-outlined text-[20px] text-teal-600">check_circle</span>
+          <p className="text-sm text-teal-800 font-medium">
+            Payment received — <strong>{cardsAdded} card slot{cardsAdded !== '1' ? 's' : ''}</strong> added to your plan. Your subscription has been updated.
+          </p>
+        </div>
+      )}
+
       {loading && (
         <div className="flex items-center justify-center gap-3 py-24 text-slate-400">
           <span className="material-symbols-outlined text-[28px] animate-spin">progress_activity</span>
@@ -243,6 +257,23 @@ export default function BillingPage() {
               )}
             </div>
           </div>
+
+          {/* Add card slots CTA */}
+          {plan.subscriptionStatus === 'active' && (
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Need more card slots?</p>
+                <p className="text-xs text-slate-500 mt-0.5">Pay a one-time setup fee per additional card — your monthly subscription updates automatically.</p>
+              </div>
+              <Link
+                href="/dashboard/billing/add-cards"
+                className="shrink-0 ml-6 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold transition-colors shadow-sm flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                Add card slots
+              </Link>
+            </div>
+          )}
 
           {/* Summary row */}
           {records.length > 0 && (

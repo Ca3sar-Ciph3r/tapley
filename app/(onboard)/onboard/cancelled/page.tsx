@@ -1,7 +1,7 @@
 // app/(onboard)/onboard/cancelled/page.tsx
 //
 // Rendering:  Server component (static).
-// Shown when user cancels or abandons Stripe Checkout.
+// Shown when user cancels or abandons PayFast payment (cancel_url).
 // Account + company already created — user can go back and retry payment.
 
 import Link from 'next/link'
