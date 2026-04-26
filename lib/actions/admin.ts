@@ -17,11 +17,9 @@
 //   This is NOT a real auth switch — auth.uid() stays the same.
 //   All impersonation sessions are logged to impersonation_log.
 //
-// MVP note: When impersonating and navigating to /dashboard, the super admin
-// sees data via the super_admin_all RLS policy (i.e. all companies' data).
-// For MVP (single client: Karam Africa), this is effectively the correct view.
-// Post-MVP: Dashboard queries should inject company_id from the impersonation
-// cookie to scope the view to the target company only.
+// Impersonation isolation: dashboard pages call getEffectiveCompanyId() to
+// resolve the correct company and pass it as an explicit filter on all queries.
+// This prevents the super_admin_all RLS policy from leaking cross-company data.
 
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
@@ -48,6 +46,31 @@ type ImpersonationCookiePayload = {
 // Returns null if not impersonating.
 // Used by layouts to render the amber banner.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// getEffectiveCompanyId
+//
+// Resolves the company_id that dashboard queries should be scoped to.
+// For a regular company admin: their own company from company_admins.
+// For a super admin impersonating: the impersonated company from the cookie.
+// Returns null if the caller has no company context (e.g. unauthenticated).
+// ---------------------------------------------------------------------------
+
+export async function getEffectiveCompanyId(): Promise<string | null> {
+  const impersonation = await getImpersonationState()
+  if (impersonation?.companyId) return impersonation.companyId
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('company_admins')
+    .select('company_id')
+    .eq('user_id', user.id)
+    .single()
+  return data?.company_id ?? null
+}
 
 export async function getImpersonationState(): Promise<ImpersonationCookiePayload | null> {
   const cookieStore = await cookies()

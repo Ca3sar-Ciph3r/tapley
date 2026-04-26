@@ -289,10 +289,11 @@ export default function EditCardPage({
     }
     setAnalytics({ total: views?.length ?? 0, by_source: bySource })
 
-    // Load departments for datalist
+    // Load departments for datalist — scoped to this card's company
     const { data: deptData } = await supabase
       .from('staff_cards')
       .select('department')
+      .eq('company_id', card.company_id)
       .eq('is_active', true)
       .not('department', 'is', null)
     if (deptData) {

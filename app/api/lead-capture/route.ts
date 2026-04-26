@@ -13,7 +13,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 
 interface LeadPayload {
   staffCardId: string
-  companyId: string
   name: string
   email?: string | null
   phone?: string | null
@@ -46,11 +45,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!payload.staffCardId || typeof payload.staffCardId !== 'string') {
     return NextResponse.json({ error: 'staffCardId is required' }, { status: 400 })
   }
-  if (!payload.companyId || typeof payload.companyId !== 'string') {
-    return NextResponse.json({ error: 'companyId is required' }, { status: 400 })
-  }
   if (!payload.name || typeof payload.name !== 'string' || !payload.name.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  }
+
+  // Derive company_id from DB — never trust the request body for this
+  const { data: staffCard, error: cardError } = await supabaseAdmin
+    .from('staff_cards')
+    .select('company_id')
+    .eq('id', payload.staffCardId)
+    .eq('is_active', true)
+    .single()
+
+  if (cardError || !staffCard) {
+    return NextResponse.json({ error: 'Invalid staff card' }, { status: 400 })
   }
 
   const phone = payload.phone ? normalisePhone(String(payload.phone)) : null
@@ -58,7 +66,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { error } = await supabaseAdmin
     .from('contacts')
     .insert({
-      company_id: payload.companyId,
+      company_id: staffCard.company_id,
       staff_card_id: payload.staffCardId,
       full_name: payload.name.trim(),
       email: payload.email?.trim() || null,

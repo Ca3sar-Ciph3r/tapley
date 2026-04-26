@@ -221,7 +221,6 @@ export default async function CardPage({ params }: PageProps) {
         <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
         <LeadCaptureSheet
           staffCardId={staffCard.id}
-          companyId={staffCard.company_id}
           staffName={staffCard.full_name}
           companyName={company?.name ?? ''}
           logoUrl={company?.logo_url ?? null}
@@ -367,7 +366,6 @@ export default async function CardPage({ params }: PageProps) {
         <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
         <LeadCaptureSheet
           staffCardId={staffCard.id}
-          companyId={staffCard.company_id}
           staffName={staffCard.full_name}
           companyName={company?.name ?? ''}
           logoUrl={company?.logo_url ?? null}
@@ -509,7 +507,6 @@ export default async function CardPage({ params }: PageProps) {
       <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
       <LeadCaptureSheet
         staffCardId={staffCard.id}
-        companyId={staffCard.company_id}
         staffName={staffCard.full_name}
         companyName={company?.name ?? ''}
         logoUrl={company?.logo_url ?? null}

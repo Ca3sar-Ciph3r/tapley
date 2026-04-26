@@ -18,7 +18,6 @@ import Image from 'next/image'
 
 interface LeadCaptureSheetProps {
   staffCardId: string
-  companyId: string
   staffName: string
   companyName: string
   logoUrl: string | null
@@ -33,7 +32,6 @@ const SESSION_KEY = 'tc_lead_captured'
 
 export function LeadCaptureSheet({
   staffCardId,
-  companyId,
   staffName,
   companyName,
   logoUrl,
@@ -102,7 +100,6 @@ export function LeadCaptureSheet({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staffCardId,
-          companyId,
           name: name.trim(),
           email: email.trim() || null,
           phone: phone.trim() || null,

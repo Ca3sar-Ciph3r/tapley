@@ -38,6 +38,7 @@ type CompanyRow = {
   subscription_status: string
   max_staff_cards: number
   created_at: string
+  self_service: boolean
   staffCount: number
   views30d: number
 }
@@ -83,10 +84,12 @@ const PLAN_LABELS: Record<string, string> = {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  trialing: 'bg-sky-50 text-sky-700',
-  active: 'bg-emerald-50 text-emerald-700',
-  paused: 'bg-amber-50 text-amber-700',
-  cancelled: 'bg-red-50 text-red-600',
+  trialing:        'bg-sky-50 text-sky-700',
+  active:          'bg-emerald-50 text-emerald-700',
+  paused:          'bg-amber-50 text-amber-700',
+  cancelled:       'bg-red-50 text-red-600',
+  past_due:        'bg-orange-50 text-orange-700',
+  pending_payment: 'bg-yellow-50 text-yellow-700',
 }
 
 function PlanBadge({ plan }: { plan: string }) {
@@ -586,7 +589,7 @@ export default function SuperAdminPage() {
     const [companiesResult, cardsResult, viewsResult, views30dResult] = await Promise.all([
       supabase
         .from('companies')
-        .select('id, name, slug, subscription_plan, subscription_status, max_staff_cards, created_at')
+        .select('id, name, slug, subscription_plan, subscription_status, max_staff_cards, created_at, self_service')
         .order('created_at', { ascending: false }),
       supabase
         .from('staff_cards')
@@ -635,6 +638,7 @@ export default function SuperAdminPage() {
 
     const rows: CompanyRow[] = rawCompanies.map(c => ({
       ...c,
+      self_service: (c as unknown as { self_service?: boolean }).self_service ?? false,
       staffCount: cardCountByCompany.get(c.id) ?? 0,
       views30d: viewCountByCompany.get(c.id) ?? 0,
     }))
@@ -807,11 +811,22 @@ function CompanyTableRow({ company }: { company: CompanyRow }) {
     year: 'numeric',
   })
 
+  // Show "New" badge for self-service companies created in the last 48 hours
+  const isNew = company.self_service &&
+    Date.now() - new Date(company.created_at).getTime() < 48 * 60 * 60 * 1000
+
   return (
     <tr className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
       {/* Company name + slug */}
       <td className="px-8 py-4">
-        <p className="text-sm font-semibold text-slate-900">{company.name}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-slate-900">{company.name}</p>
+          {isNew && (
+            <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-500 text-white uppercase tracking-wide">
+              New
+            </span>
+          )}
+        </div>
         <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{company.slug}</p>
       </td>
 

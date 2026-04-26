@@ -8,6 +8,7 @@
 //   - Returns 200 quickly to prevent Stripe retries on slow DB writes
 //
 // Events handled:
+//   checkout.session.completed    → activate self-service company after setup fee paid
 //   invoice.paid                  → insert billing_record (type='payment', status='paid')
 //   invoice.payment_failed        → update subscription_status = 'past_due'
 //   customer.subscription.updated → sync active card quantity if it changed externally
@@ -15,13 +16,17 @@
 // Configuration:
 //   1. In Stripe dashboard → Developers → Webhooks → Add endpoint
 //      URL: https://tapleyconnect.co.za/api/webhooks/stripe
-//      Events: invoice.paid, invoice.payment_failed, customer.subscription.updated
+//      Events: checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.updated
 //   2. Copy the "Signing secret" → add as STRIPE_WEBHOOK_SECRET in Vercel
 
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe/client'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import {
+  sendAdminNotificationEmail,
+  sendClientActivationEmail,
+} from '@/lib/email/onboarding'
 
 // Disable Next.js body parsing — Stripe needs the raw bytes for signature verification
 export const runtime = 'nodejs'
@@ -51,6 +56,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Dispatch to handler — swallow errors so Stripe doesn't retry on our DB issues
   try {
     switch (event.type) {
+      case 'checkout.session.completed':
+        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session)
+        break
       case 'invoice.paid':
         await handleInvoicePaid(event.data.object as Stripe.Invoice)
         break
@@ -71,6 +79,97 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   return NextResponse.json({ received: true })
+}
+
+// ---------------------------------------------------------------------------
+// handleCheckoutCompleted
+//
+// Activates a self-service company after the one-time setup fee is paid.
+// Guards: only processes events with tapley_type = 'onboarding_setup_fee'.
+// ---------------------------------------------------------------------------
+
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  if (session.metadata?.tapley_type !== 'onboarding_setup_fee') return
+  if (session.payment_status !== 'paid') return
+
+  const companyId = session.metadata?.tapley_company_id
+  if (!companyId) {
+    // eslint-disable-next-line no-console
+    console.warn('[stripe-webhook] checkout.session.completed — missing tapley_company_id in metadata')
+    return
+  }
+
+  const adminAny = supabaseAdmin as unknown as {
+    from(t: string): {
+      update(row: Record<string, unknown>): {
+        eq(col: string, val: string): Promise<{ error: { message: string } | null }>
+      }
+      insert(row: Record<string, unknown>): Promise<{ error: { message: string } | null }>
+    }
+  }
+
+  // 1. Activate the company
+  const { error: activateError } = await adminAny.from('companies').update({
+    subscription_status: 'active',
+    setup_fee_paid:      true,
+    onboarded_at:        new Date().toISOString(),
+    stripe_customer_id:  typeof session.customer === 'string' ? session.customer : null,
+    updated_at:          new Date().toISOString(),
+  }).eq('id', companyId)
+
+  if (activateError) {
+    // eslint-disable-next-line no-console
+    console.error('[stripe-webhook] failed to activate company:', activateError.message)
+    return
+  }
+
+  // 2. Log the setup fee as a billing_record
+  const amountZar = (session.amount_total ?? 0) / 100
+  await adminAny.from('billing_records').insert({
+    company_id:   companyId,
+    type:         'setup_fee',
+    amount_zar:   amountZar,
+    description:  `Self-service setup fee — Stripe session ${session.id}`,
+    billing_date: new Date().toISOString().slice(0, 10),
+    status:       'paid',
+  })
+
+  // 3. Send email notifications (non-fatal — don't let email failure block activation)
+  const companyName = session.metadata?.company_name ?? 'Unknown'
+  const planName    = session.metadata?.plan_name    ?? 'Unknown'
+  const adminName   = session.metadata?.admin_name   ?? ''
+  const adminEmail  = session.metadata?.admin_email  ?? ''
+  const cardCount   = parseInt(session.metadata?.card_count ?? '0', 10)
+  const appUrl      = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'
+
+  const [adminNotifyResult, clientEmailResult] = await Promise.allSettled([
+    sendAdminNotificationEmail({
+      companyName,
+      adminName,
+      adminEmail,
+      planName,
+      cardCount,
+      setupFeeZar: amountZar,
+      companyId,
+    }),
+    sendClientActivationEmail({
+      companyName,
+      adminEmail,
+      adminName,
+      planName,
+      cardCount,
+      dashboardUrl: `${appUrl}/dashboard`,
+    }),
+  ])
+
+  if (adminNotifyResult.status === 'rejected') {
+    // eslint-disable-next-line no-console
+    console.error('[stripe-webhook] admin notification email failed:', adminNotifyResult.reason)
+  }
+  if (clientEmailResult.status === 'rejected') {
+    // eslint-disable-next-line no-console
+    console.error('[stripe-webhook] client activation email failed:', clientEmailResult.reason)
+  }
 }
 
 // ---------------------------------------------------------------------------

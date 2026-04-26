@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { deactivateStaffCard } from '@/lib/actions/cards'
+import { getEffectiveCompanyId } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,12 +87,20 @@ export default function CardsPage() {
     setLoading(true)
     setLoadError(null)
 
+    const effectiveCompanyId = await getEffectiveCompanyId()
+    if (!effectiveCompanyId) {
+      setLoadError('Could not resolve company context.')
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
 
-    // Fetch staff cards with NFC join
+    // Fetch staff cards with NFC join — scoped to effective company
     const { data: rawCards, error: cardsError } = await supabase
       .from('staff_cards')
       .select('id, full_name, job_title, department, photo_url, is_active, nfc_card_id, nfc_cards(slug, order_status)')
+      .eq('company_id', effectiveCompanyId)
       .order('full_name', { ascending: true })
 
     if (cardsError || !rawCards) {

@@ -24,6 +24,7 @@ import {
   type CreateStaffCardInput,
 } from '@/lib/actions/cards'
 import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
+import { getEffectiveCompanyId } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,10 +99,14 @@ export default function NewCardPage() {
   // Load existing departments for the datalist autocomplete
   useEffect(() => {
     async function loadDepartments() {
+      const effectiveCompanyId = await getEffectiveCompanyId()
+      if (!effectiveCompanyId) return
+
       const supabase = createClient()
       const { data } = await supabase
         .from('staff_cards')
         .select('department')
+        .eq('company_id', effectiveCompanyId)
         .eq('is_active', true)
         .not('department', 'is', null)
 

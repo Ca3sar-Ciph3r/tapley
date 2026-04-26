@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getEffectiveCompanyId } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -403,33 +404,56 @@ export default function AnalyticsPage() {
     setLoading(true)
     setLoadError(null)
 
+    const effectiveCompanyId = await getEffectiveCompanyId()
+    if (!effectiveCompanyId) {
+      setLoadError('Could not resolve company context.')
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [viewsResult, cardsResult, contacts30dResult, contactsPrev30dResult] = await Promise.all([
-      supabase
-        .from('card_views')
-        .select('staff_card_id, viewed_at, session_id, os, wa_clicked, vcf_downloaded')
-        .gte('viewed_at', ninetyDaysAgo),
+    // Round 1: staff_cards + contacts — both scoped to effectiveCompanyId
+    const [cardsResult, contacts30dResult, contactsPrev30dResult] = await Promise.all([
       supabase
         .from('staff_cards')
         .select('id, full_name, job_title, photo_url')
+        .eq('company_id', effectiveCompanyId)
         .eq('is_active', true),
       supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true })
+        .eq('company_id', effectiveCompanyId)
         .gte('created_at', thirtyDaysAgo),
       supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true })
+        .eq('company_id', effectiveCompanyId)
         .gte('created_at', sixtyDaysAgo)
         .lt('created_at', thirtyDaysAgo),
     ])
 
-    if (viewsResult.error || cardsResult.error) {
+    if (cardsResult.error) {
+      setLoadError('Failed to load analytics data. Please refresh.')
+      setLoading(false)
+      return
+    }
+
+    const staffCardIds = (cardsResult.data ?? []).map(c => c.id)
+
+    // Round 2: card_views scoped via staff_card_ids (card_views has no company_id column)
+    const viewsResult = staffCardIds.length > 0
+      ? await supabase
+          .from('card_views')
+          .select('staff_card_id, viewed_at, session_id, os, wa_clicked, vcf_downloaded')
+          .in('staff_card_id', staffCardIds)
+          .gte('viewed_at', ninetyDaysAgo)
+      : { data: [] as RawView[], error: null }
+
+    if (viewsResult.error) {
       setLoadError('Failed to load analytics data. Please refresh.')
       setLoading(false)
       return

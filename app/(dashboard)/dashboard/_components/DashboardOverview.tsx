@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { updateOnboardingStep } from '@/lib/actions/onboarding'
+import { getEffectiveCompanyId } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -405,21 +406,40 @@ export function DashboardOverview() {
     const supabase = createClient()
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [viewsResult, staffResult, companyResult] = await Promise.all([
-      supabase
-        .from('card_views')
-        .select('staff_card_id, viewed_at, source')
-        .gte('viewed_at', ninetyDaysAgo)
-        .order('viewed_at', { ascending: false }),
+    // Resolve company scope — handles both regular admins and impersonating super admin
+    const effectiveCompanyId = await getEffectiveCompanyId()
+    if (!effectiveCompanyId) {
+      setLoadError('Could not resolve company context.')
+      setLoading(false)
+      return
+    }
+
+    // Round 1: staff cards + company (both scoped to effectiveCompanyId)
+    const [staffResult, companyResult] = await Promise.all([
       supabase
         .from('staff_cards')
         .select('id, full_name, job_title, photo_url, is_active')
+        .eq('company_id', effectiveCompanyId)
         .order('full_name', { ascending: true }),
       (supabase as any)
         .from('companies')
         .select('id, onboarding_checklist, referral_code')
+        .eq('id', effectiveCompanyId)
         .single(),
     ])
+
+    const staffData = (staffResult.data ?? []) as StaffCard[]
+    const staffCardIds = staffData.map(s => s.id)
+
+    // Round 2: card_views scoped to this company's staff cards
+    const viewsResult = staffCardIds.length > 0
+      ? await supabase
+          .from('card_views')
+          .select('staff_card_id, viewed_at, source')
+          .in('staff_card_id', staffCardIds)
+          .gte('viewed_at', ninetyDaysAgo)
+          .order('viewed_at', { ascending: false })
+      : { data: [], error: null }
 
     if (viewsResult.error) {
       setLoadError('Could not load analytics data.')
@@ -428,7 +448,7 @@ export function DashboardOverview() {
     }
 
     setViews((viewsResult.data ?? []) as RawView[])
-    setStaffCards((staffResult.data ?? []) as StaffCard[])
+    setStaffCards(staffData)
 
     if (companyResult.data) {
       setCompanyId(companyResult.data.id ?? null)
