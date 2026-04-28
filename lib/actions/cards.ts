@@ -133,6 +133,27 @@ export async function createStaffCard(
     companyId = adminRecord.company_id
   }
 
+  // Enforce plan card limit — count active staff cards for this company
+  const supabaseAny = supabase as any
+  const { count: activeCount } = await supabaseAny
+    .from('staff_cards')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+
+  const { data: companyRow } = await supabaseAny
+    .from('companies')
+    .select('max_staff_cards')
+    .eq('id', companyId)
+    .single()
+
+  const maxCards = (companyRow?.max_staff_cards as number | undefined) ?? 10
+  if (typeof activeCount === 'number' && activeCount >= maxCards) {
+    return {
+      error: `You have reached the ${maxCards}-card limit for your plan. Upgrade your plan to add more team members.`,
+    }
+  }
+
   // Normalise phone numbers to E.164 (+27...)
   const phone = input.phone.trim() ? normalisePhoneNumber(input.phone.trim()) : null
   // WhatsApp defaults to work phone if left blank
@@ -339,8 +360,7 @@ export async function assignNfcCard(
     return { error: 'This staff card already has an NFC card assigned. Use Reassign instead.' }
   }
 
-  // Verify the NFC card exists and belongs to the same company
-  // RLS on nfc_cards (company_id = auth_company_id()) also enforces this
+  // Verify the NFC card exists
   const { data: nfcCard } = await supabase
     .from('nfc_cards')
     .select('id, slug, company_id, order_status')
@@ -350,6 +370,14 @@ export async function assignNfcCard(
   if (!nfcCard) return { error: 'NFC card not found or not in your company inventory.' }
   if (nfcCard.order_status === 'deactivated') {
     return { error: 'This NFC card has been deactivated and cannot be assigned.' }
+  }
+
+  // Cross-company guard: NFC card must belong to the same company as the staff card.
+  // super_admin_all RLS policy lets super admins see all NFC cards across all companies —
+  // without this explicit check, a super admin impersonating a company could assign an NFC
+  // card from a different company, causing cross-company data bleed (Stage 21 incident).
+  if (nfcCard.company_id !== staffCard.company_id) {
+    return { error: 'This NFC card belongs to a different company and cannot be assigned here.' }
   }
 
   // Verify the NFC card is not already held by another staff card

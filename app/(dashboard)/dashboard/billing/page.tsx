@@ -37,10 +37,12 @@ type PlanSummary = {
   subscriptionPlan: string
   ratePerCardZar: number | null
   maxStaffCards: number
+  activeCardCount: number
   billingCycle: string
   nextBillingDate: string | null
   freeMonthsBalance: number
   subscriptionStatus: string
+  subscriptionRenewedAt: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +106,10 @@ export default function BillingPage() {
   const [records, setRecords] = useState<BillingRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelConfirmText, setCancelConfirmText] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -148,7 +154,7 @@ export default function BillingPage() {
     // Fetch company plan details
     const { data: company, error: companyError } = await supabaseAny
       .from('companies')
-      .select('name, subscription_plan, subscription_status, rate_per_card_zar, max_staff_cards, next_billing_date, billing_cycle, free_months_balance')
+      .select('name, subscription_plan, subscription_status, subscription_renewed_at, rate_per_card_zar, max_staff_cards, next_billing_date, billing_cycle, free_months_balance')
       .eq('id', companyId)
       .single()
 
@@ -158,15 +164,24 @@ export default function BillingPage() {
       return
     }
 
+    // Count active staff cards for the progress bar
+    const { count: cardCount } = await supabaseAny
+      .from('staff_cards')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+
     setPlan({
       companyName: company.name,
       subscriptionPlan: company.subscription_plan ?? 'starter',
       ratePerCardZar: company.rate_per_card_zar ?? null,
       maxStaffCards: company.max_staff_cards ?? 0,
+      activeCardCount: cardCount ?? 0,
       billingCycle: company.billing_cycle ?? 'monthly',
       nextBillingDate: company.next_billing_date ?? null,
       freeMonthsBalance: company.free_months_balance ?? 0,
       subscriptionStatus: company.subscription_status ?? 'active',
+      subscriptionRenewedAt: company.subscription_renewed_at ?? null,
     })
 
     // Fetch billing records
@@ -258,20 +273,57 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {/* Add card slots CTA */}
-          {plan.subscriptionStatus === 'active' && (
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Need more card slots?</p>
-                <p className="text-xs text-slate-500 mt-0.5">Pay a one-time setup fee per additional card — your monthly subscription updates automatically.</p>
+          {/* Cards usage progress bar */}
+          {(() => {
+            const used = plan.activeCardCount
+            const max  = plan.maxStaffCards
+            const pct  = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0
+            const nearLimit = pct >= 80
+            return (
+              <div className="glass-panel rounded-2xl px-6 py-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-800">Card slots used</p>
+                  <span className={`text-sm font-bold tabular-nums ${nearLimit ? 'text-amber-600' : 'text-slate-700'}`}>
+                    {used} / {max}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${nearLimit ? 'bg-amber-400' : 'bg-teal-500'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {nearLimit && (
+                  <p className="text-xs text-amber-600">
+                    You are approaching your plan limit. Add more card slots before you run out.
+                  </p>
+                )}
               </div>
-              <Link
-                href="/dashboard/billing/add-cards"
-                className="shrink-0 ml-6 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold transition-colors shadow-sm flex items-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-[16px]">add</span>
-                Add card slots
-              </Link>
+            )
+          })()}
+
+          {/* Upgrade CTA + Cancel subscription */}
+          {plan.subscriptionStatus === 'active' && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Manage your plan</p>
+                <p className="text-xs text-slate-500 mt-0.5">Add card slots or cancel your subscription.</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Link
+                  href="/dashboard/billing/add-cards"
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold transition-colors shadow-sm flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  Add card slots
+                </Link>
+                <button
+                  onClick={() => { setShowCancelModal(true); setCancelConfirmText(''); setCancelError(null) }}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 text-sm font-bold transition-colors"
+                >
+                  Cancel plan
+                </button>
+              </div>
             </div>
           )}
 
@@ -351,6 +403,67 @@ export default function BillingPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Cancel subscription confirmation modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 space-y-5">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-[24px] text-red-500 mt-0.5">warning</span>
+              <div>
+                <h2 className="text-lg font-extrabold font-jakarta text-slate-900">Cancel subscription?</h2>
+                <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                  Your team&apos;s digital card pages will stop working at the end of your current
+                  billing period. This cannot be undone from the dashboard.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-700">
+                Type <span className="font-mono text-red-600">CANCEL</span> to confirm
+              </p>
+              <input
+                type="text"
+                value={cancelConfirmText}
+                onChange={e => setCancelConfirmText(e.target.value)}
+                placeholder="CANCEL"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              />
+            </div>
+            {cancelError && (
+              <p className="text-xs text-red-500">{cancelError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Keep subscription
+              </button>
+              <button
+                disabled={cancelConfirmText !== 'CANCEL' || cancelling}
+                onClick={async () => {
+                  setCancelling(true)
+                  setCancelError(null)
+                  try {
+                    const res = await fetch('/api/billing/cancel', { method: 'POST' })
+                    if (!res.ok) throw new Error('Request failed')
+                    setShowCancelModal(false)
+                    await loadData()
+                  } catch {
+                    setCancelError('Failed to cancel. Please contact support@tapleys.co.za.')
+                  } finally {
+                    setCancelling(false)
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-bold transition-colors"
+              >
+                {cancelling ? 'Cancelling…' : 'Yes, cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

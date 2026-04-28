@@ -22,6 +22,7 @@
 // This prevents the super_admin_all RLS policy from leaking cross-company data.
 
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -1009,4 +1010,20 @@ export async function addBillingRecord(
     })
 
   return { error: error?.message }
+}
+
+export async function revalidateCardSlug(slug: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  const { data: adminRecord } = await (supabase
+    .from('company_admins')
+    .select('role')
+    .eq('user_id', user.id)
+    .single() as unknown as Promise<{ data: { role: string } | null }>)
+  if (adminRecord?.role !== 'super_admin') return { error: 'Access denied.' }
+
+  revalidatePath(`/c/${slug}`)
+  return {}
 }

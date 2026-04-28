@@ -27,8 +27,10 @@ export type WizardPlan = {
 export type WizardCompany = {
   name: string
   industry: string
+  companySize: string
   website: string
   tagline: string
+  challenge: string
 }
 
 export type WizardAccount = {

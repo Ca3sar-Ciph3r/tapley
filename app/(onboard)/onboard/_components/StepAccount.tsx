@@ -27,6 +27,7 @@ export function StepAccount({ initial, plan, company, onNext, onBack }: StepAcco
   const [email,      setEmail]      = useState(initial?.email ?? '')
   const [password,   setPassword]   = useState('')
   const [phone,      setPhone]      = useState(initial?.phone ?? '')
+  const [tcAccepted, setTcAccepted] = useState(false)
   const [errors,     setErrors]     = useState<Record<string, string>>({})
   const [state,      setState]      = useState<AccountState>('form')
   const [serverErr,  setServerErr]  = useState<string | null>(null)
@@ -38,6 +39,7 @@ export function StepAccount({ initial, plan, company, onNext, onBack }: StepAcco
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       errs.email = 'Enter a valid email address.'
     if (password.length < 8) errs.password = 'Password must be at least 8 characters.'
+    if (!tcAccepted) errs.tc = 'You must accept the Terms & Conditions to continue.'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -97,8 +99,10 @@ export function StepAccount({ initial, plan, company, onNext, onBack }: StepAcco
     const result = await createPendingCompany({
       companyName:    company.name,
       industry:       company.industry,
+      companySize:    company.companySize,
       website:        company.website,
       tagline:        company.tagline,
+      challenge:      company.challenge,
       tierName:       plan.tierName,
       cardCount:      plan.cardCount,
       isQrDigital:    plan.isQrDigital,
@@ -132,8 +136,7 @@ export function StepAccount({ initial, plan, company, onNext, onBack }: StepAcco
         <button
           type="button"
           onClick={handleEmailConfirmed}
-          disabled={state === 'submitting'}
-          className="w-full py-3.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold text-sm transition-colors shadow-sm"
+          className="w-full py-3.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm transition-colors shadow-sm"
         >
           I've confirmed my email →
         </button>
@@ -228,6 +231,31 @@ export function StepAccount({ initial, plan, company, onNext, onBack }: StepAcco
         </div>
       </div>
 
+      {/* T&C checkbox */}
+      <div className="mt-6">
+        <label className={`flex items-start gap-3 cursor-pointer`}>
+          <input
+            type="checkbox"
+            checked={tcAccepted}
+            onChange={e => { setTcAccepted(e.target.checked); setErrors(p => ({ ...p, tc: '' })) }}
+            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 flex-shrink-0"
+          />
+          <span className={`text-sm ${errors.tc ? 'text-red-700' : 'text-slate-700'}`}>
+            I agree to the{' '}
+            <a href="/legal" target="_blank" rel="noopener noreferrer" className="underline text-teal-600 hover:text-teal-700">
+              Terms &amp; Conditions
+            </a>{' '}
+            and{' '}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline text-teal-600 hover:text-teal-700">
+              Privacy Policy
+            </a>
+            . My data is protected under POPIA.{' '}
+            <span className="text-red-500">*</span>
+          </span>
+        </label>
+        {errors.tc && <p className="text-xs text-red-600 mt-1 ml-7">{errors.tc}</p>}
+      </div>
+
       {serverErr && (
         <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-700">
           {serverErr}
@@ -252,13 +280,6 @@ export function StepAccount({ initial, plan, company, onNext, onBack }: StepAcco
           {state === 'submitting' ? 'Creating account…' : 'Create account →'}
         </button>
       </div>
-
-      <p className="text-xs text-slate-400 text-center mt-4">
-        By creating an account you agree to our{' '}
-        <a href="/terms" className="underline text-slate-500">Terms</a> and{' '}
-        <a href="/privacy" className="underline text-slate-500">Privacy Policy</a>.
-        Your data is protected under POPIA.
-      </p>
     </div>
   )
 }

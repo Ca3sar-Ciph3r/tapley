@@ -36,8 +36,10 @@ import type { BillingCycle } from '@/lib/utils/pricing'
 export type CreatePendingCompanyInput = {
   companyName: string
   industry:    string
+  companySize: string
   website:     string
   tagline:     string
+  challenge:   string
   tierName:    string
   cardCount:   number
   isQrDigital: boolean
@@ -116,8 +118,10 @@ export async function createPendingCompany(
       billing_cycle:       input.billingCycle,
       monthly_rate_override: input.monthlyTotalZar,
       industry:            input.industry || null,
+      company_size:        input.companySize || null,
       website:             input.website.trim() || null,
       tagline:             input.tagline.trim() || null,
+      onboarding_challenge: input.challenge.trim() || null,
       self_service:        true,
       setup_fee_paid:      false,
     })
@@ -256,9 +260,9 @@ export async function createPayFastSetupFeeParams(
     customStr3:     input.planName,
     customStr4:     String(input.cardCount),
     customStr5:     String(input.monthlyFeeZar),
-    returnUrl:      `${appUrl}/onboard/success`,
+    returnUrl:      `${appUrl}/onboard/success?company_id=${input.companyId}`,
     cancelUrl:      `${appUrl}/onboard/cancelled`,
-    notifyUrl:      `${appUrl}/api/webhooks/payfast`,
+    notifyUrl:      `${appUrl}/api/billing/payfast-itn`,
     subscription: {
       recurringAmountZar: input.monthlyFeeZar,
       billingDate:        nextMonthBillingDate(),

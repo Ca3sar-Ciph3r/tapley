@@ -7,6 +7,14 @@
 import { useState } from 'react'
 import type { WizardCompany } from '../_types'
 
+const COMPANY_SIZES = [
+  '1–5 employees',
+  '6–20 employees',
+  '21–50 employees',
+  '51–200 employees',
+  '200+ employees',
+]
+
 const INDUSTRIES = [
   'Construction & Engineering',
   'Education',
@@ -34,23 +42,33 @@ interface StepCompanyProps {
 }
 
 export function StepCompany({ initial, onNext, onBack }: StepCompanyProps) {
-  const [name, setName]         = useState(initial?.name ?? '')
-  const [industry, setIndustry] = useState(initial?.industry ?? '')
-  const [website, setWebsite]   = useState(initial?.website ?? '')
-  const [tagline, setTagline]   = useState(initial?.tagline ?? '')
-  const [errors, setErrors]     = useState<Record<string, string>>({})
+  const [name,        setName]        = useState(initial?.name ?? '')
+  const [industry,    setIndustry]    = useState(initial?.industry ?? '')
+  const [companySize, setCompanySize] = useState(initial?.companySize ?? '')
+  const [website,     setWebsite]     = useState(initial?.website ?? '')
+  const [tagline,     setTagline]     = useState(initial?.tagline ?? '')
+  const [challenge,   setChallenge]   = useState(initial?.challenge ?? '')
+  const [errors,      setErrors]      = useState<Record<string, string>>({})
 
   function validate(): boolean {
     const errs: Record<string, string> = {}
     if (!name.trim() || name.trim().length < 2) errs.name = 'Company name is required (min 2 characters).'
     if (!industry) errs.industry = 'Please select an industry.'
+    if (!companySize) errs.companySize = 'Please select your company size.'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
 
   function handleNext() {
     if (!validate()) return
-    onNext({ name: name.trim(), industry, website: website.trim(), tagline: tagline.trim() })
+    onNext({
+      name:        name.trim(),
+      industry,
+      companySize,
+      website:     website.trim(),
+      tagline:     tagline.trim(),
+      challenge:   challenge.trim(),
+    })
   }
 
   return (
@@ -92,6 +110,22 @@ export function StepCompany({ initial, onNext, onBack }: StepCompanyProps) {
           {errors.industry && <p className="text-xs text-red-600 mt-1">{errors.industry}</p>}
         </div>
 
+        {/* Company size */}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+            Company size <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={companySize}
+            onChange={e => { setCompanySize(e.target.value); setErrors(prev => ({ ...prev, companySize: '' })) }}
+            className={`w-full px-4 py-3 rounded-xl border text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent bg-white ${errors.companySize ? 'border-red-300' : 'border-slate-200'}`}
+          >
+            <option value="">Select size…</option>
+            {COMPANY_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {errors.companySize && <p className="text-xs text-red-600 mt-1">{errors.companySize}</p>}
+        </div>
+
         {/* Website */}
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
@@ -120,6 +154,22 @@ export function StepCompany({ initial, onNext, onBack }: StepCompanyProps) {
             className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent bg-white"
           />
           <p className="text-xs text-slate-400 mt-1">{tagline.length}/100</p>
+        </div>
+
+        {/* Biggest challenge */}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+            Biggest business card challenge <span className="text-slate-400 font-normal normal-case">(optional)</span>
+          </label>
+          <textarea
+            value={challenge}
+            onChange={e => setChallenge(e.target.value)}
+            placeholder="e.g. Cards go out of date, staff turnover means constant reprinting, no way to track who's engaging…"
+            rows={3}
+            maxLength={400}
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent bg-white resize-none"
+          />
+          <p className="text-xs text-slate-400 mt-1">{challenge.length}/400</p>
         </div>
       </div>
 
