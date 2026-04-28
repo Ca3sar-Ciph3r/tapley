@@ -274,6 +274,8 @@ export default function BrandingPage() {
       companies: CompanyRow | CompanyRow[] | null
     }
 
+    // Fetch all admin rows — user may have multiple (super_admin + admin for own company).
+    // Prefer the row with a real company_id so the branding page has company context.
     const adminResult = await supabase
       .from('company_admins')
       .select(`
@@ -285,11 +287,12 @@ export default function BrandingPage() {
         )
       `)
       .eq('user_id', user.id)
-      .single()
 
-    const adminRecord = adminResult.data as AdminRow | null
+    const allAdminRows = (adminResult.data ?? []) as AdminRow[]
+    const adminRecord: AdminRow | null =
+      allAdminRows.find(r => r.company_id !== null) ?? allAdminRows[0] ?? null
 
-    if (adminResult.error || !adminRecord) {
+    if (!adminRecord) {
       setLoadError('No company found for this account.')
       setLoading(false)
       return

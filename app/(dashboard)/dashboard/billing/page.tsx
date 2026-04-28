@@ -129,13 +129,15 @@ export default function BillingPage() {
     // Super admin impersonating: via impersonation cookie
     let companyId: string | null = null
 
+    // Fetch all rows — user may have multiple (super_admin + admin for own company).
+    // Prefer the row with a real company_id for billing context.
     const adminResult = await supabaseAny
       .from('company_admins')
       .select('company_id, role')
       .eq('user_id', user.id)
-      .single()
 
-    const adminRow = adminResult.data as { company_id: string | null; role: string } | null
+    const allAdminRows = (adminResult.data ?? []) as { company_id: string | null; role: string }[]
+    const adminRow = allAdminRows.find(r => r.company_id !== null) ?? allAdminRows[0] ?? null
 
     if (adminRow?.company_id) {
       companyId = adminRow.company_id
@@ -253,7 +255,10 @@ export default function BillingPage() {
                   ? `R ${plan.ratePerCardZar.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
                   : '—'}
               </p>
-              <p className="text-xs text-slate-400 mt-0.5 capitalize">{plan.billingCycle}</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {plan.billingCycle === 'annual' ? 'Annual plan' : 'Monthly plan'}
+                {plan.nextBillingDate ? ` — renews ${formatDate(plan.nextBillingDate)}` : ''}
+              </p>
             </div>
             <div className={`glass-panel rounded-2xl px-5 py-4 shadow-sm ${plan.freeMonthsBalance > 0 ? 'ring-1 ring-teal-200' : ''}`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Free Months</p>

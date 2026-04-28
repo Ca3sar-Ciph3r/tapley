@@ -45,6 +45,7 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
       cardCount:      plan.cardCount,
       setupFeeZar:    plan.setupTotalZar,
       monthlyFeeZar:  plan.monthlyTotalZar,
+      billingCycle:   plan.billingCycle,
     })
 
     if (result.error || !result.formData) {
@@ -57,9 +58,14 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
     setFormData(result.formData)
   }
 
-  const monthlyDisplay = plan.billingCycle === 'annual'
-    ? plan.annualDiscountedTotalZar / 12
-    : plan.monthlyTotalZar
+  const isAnnual = plan.billingCycle === 'annual'
+  const annualTotalZar = plan.annualDiscountedTotalZar
+  const savingsZar = plan.monthlyTotalZar * 2
+  const annualMonthlyEquiv = Math.round(annualTotalZar / 12)
+  // For annual: setup fee + first year is charged today as one payment
+  const dueToday = isAnnual
+    ? plan.setupTotalZar + annualTotalZar
+    : plan.setupTotalZar
 
   // Once form data is set, show a brief redirect message while the form submits
   if (formData) {
@@ -78,7 +84,9 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
     <div>
       <h2 className="text-2xl font-bold font-jakarta text-slate-900 mb-1">Review & pay</h2>
       <p className="text-slate-500 text-sm mb-8">
-        Pay your setup fee today. Monthly billing starts after your first month.
+        {isAnnual
+          ? 'Your setup fee and first year are charged today. Annual billing renews 12 months from now.'
+          : 'Pay your setup fee today. Monthly billing starts after your first month.'}
       </p>
 
       {/* Order summary */}
@@ -86,7 +94,8 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
         <div className="p-5 border-b border-slate-200">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">Order summary</p>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
+            {/* Plan header */}
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-sm font-semibold text-slate-800">
@@ -94,22 +103,67 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
                 </p>
                 <p className="text-xs text-slate-500">{company.name}</p>
               </div>
+            </div>
+
+            {/* Subscription line */}
+            <div className="flex justify-between items-baseline pt-1">
+              <div>
+                <p className="text-sm text-slate-700">
+                  {isAnnual
+                    ? `Annual subscription (${formatZar(annualMonthlyEquiv)}/mo equiv.)`
+                    : 'Monthly subscription'}
+                </p>
+                {isAnnual && (
+                  <p className="text-xs text-slate-400">10 months billed · 2 months free</p>
+                )}
+              </div>
+              <p className="text-sm font-semibold text-slate-800 ml-4">
+                {isAnnual ? `${formatZar(annualTotalZar)}/yr` : `${formatZar(plan.monthlyTotalZar)}/mo`}
+              </p>
+            </div>
+
+            {/* Setup fee line */}
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-slate-700">Setup fee (once-off)</p>
               <p className="text-sm font-semibold text-slate-800">{formatZar(plan.setupTotalZar)}</p>
             </div>
 
-            <div className="flex items-center gap-2 py-2 px-3 bg-teal-50 rounded-xl">
-              <span className="material-symbols-outlined text-[16px] text-teal-600">info</span>
-              <p className="text-xs text-teal-700">
-                Monthly billing of <strong>{formatZar(monthlyDisplay)}/mo</strong> starts after payment.
-                {plan.billingCycle === 'annual' && ' Billed annually (2 months free).'}
-              </p>
-            </div>
+            {/* Savings badge — annual only */}
+            {isAnnual && (
+              <div className="flex items-center gap-2 py-2 px-3 bg-teal-50 rounded-xl">
+                <span className="material-symbols-outlined text-[16px] text-teal-600">savings</span>
+                <p className="text-xs text-teal-700">
+                  You save <strong>{formatZar(savingsZar)}</strong> vs monthly billing
+                </p>
+              </div>
+            )}
+
+            {/* Monthly reminder — monthly only */}
+            {!isAnnual && (
+              <div className="flex items-center gap-2 py-2 px-3 bg-teal-50 rounded-xl">
+                <span className="material-symbols-outlined text-[16px] text-teal-600">info</span>
+                <p className="text-xs text-teal-700">
+                  Monthly billing of <strong>{formatZar(plan.monthlyTotalZar)}/mo</strong> starts next month.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="p-5 flex justify-between items-center bg-white">
-          <p className="font-bold text-slate-900">Due today</p>
-          <p className="text-2xl font-bold text-slate-900">{formatZar(plan.setupTotalZar)}</p>
+        {/* Due today footer */}
+        <div className="p-5 bg-white space-y-1">
+          <div className="flex justify-between items-center">
+            <p className="font-bold text-slate-900">
+              {isAnnual ? 'First charge today' : 'Due today'}
+            </p>
+            <p className="text-2xl font-bold text-slate-900">{formatZar(dueToday)}</p>
+          </div>
+          {isAnnual && (
+            <div className="flex justify-between items-center">
+              <p className="text-xs text-slate-400">Then annually</p>
+              <p className="text-xs font-semibold text-slate-600">{formatZar(annualTotalZar)}/year</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -164,7 +218,7 @@ export function StepPayment({ plan, company, account, brand: _brand, companyId, 
           ) : (
             <>
               <span className="material-symbols-outlined text-[18px]">lock</span>
-              Pay {formatZar(plan.setupTotalZar)} securely →
+              Pay {formatZar(dueToday)} securely →
             </>
           )}
         </button>

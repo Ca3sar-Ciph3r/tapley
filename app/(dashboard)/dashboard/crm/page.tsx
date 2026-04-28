@@ -312,11 +312,14 @@ export default function CrmPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoadError('Not authenticated.'); setLoading(false); return }
 
-      const { data: adminRow } = await supabase
+      // Fetch all rows — user may have multiple; prefer row with company_id.
+      const { data: adminRows } = await supabase
         .from('company_admins')
         .select('company_id')
         .eq('user_id', user.id)
-        .single()
+
+      const allAdminRows = (adminRows ?? []) as { company_id: string | null }[]
+      const adminRow = allAdminRows.find(r => r.company_id !== null) ?? allAdminRows[0] ?? null
       resolvedCompanyId = adminRow?.company_id ?? null
     }
 

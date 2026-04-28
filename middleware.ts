@@ -84,13 +84,13 @@ export async function middleware(request: NextRequest) {
 
   // Rule 3: /admin/* requires super_admin role
   if (user && pathname.startsWith('/admin')) {
-    const { data: adminRecord } = await supabase
+    const { data: adminRows } = await supabase
       .from('company_admins')
       .select('role')
       .eq('user_id', user.id)
-      .single()
 
-    if (adminRecord?.role !== 'super_admin') {
+    const hasSuperAdmin = (adminRows ?? []).some(r => r.role === 'super_admin')
+    if (!hasSuperAdmin) {
       const dashboardUrl = request.nextUrl.clone()
       dashboardUrl.pathname = '/dashboard'
       return NextResponse.redirect(dashboardUrl)
@@ -102,12 +102,16 @@ export async function middleware(request: NextRequest) {
   // Rule 4: /dashboard/* subscription gating
   // /billing/* pages are exempt so gated users can see the retry/reactivate UI.
   if (user && pathname.startsWith('/dashboard') && !pathname.startsWith('/billing')) {
-    // Resolve company_id — super admins have no company_id row, skip gate for them
-    const { data: adminRecord } = await supabase
+    // Resolve company_id — super admins bypass the gate.
+    // Fetch all rows: user may have multiple (e.g. super_admin + admin for own company).
+    const { data: adminRowsGate } = await supabase
       .from('company_admins')
       .select('role, company_id')
       .eq('user_id', user.id)
-      .single()
+
+    type GateRow = { role: string; company_id: string | null }
+    const gateRows = (adminRowsGate ?? []) as GateRow[]
+    const adminRecord = gateRows.find(r => r.role === 'super_admin') ?? gateRows[0] ?? null
 
     if (adminRecord?.role === 'super_admin') {
       return supabaseResponse

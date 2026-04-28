@@ -37,14 +37,17 @@ export default async function DashboardPage() {
   // If so, skip the /admin redirect and show the company admin view.
   const impersonation = await getImpersonationState()
 
-  // Check company_admins table for role
-  const { data: adminRecordRaw } = await supabase
+  // Fetch all admin rows — user may have multiple (e.g. super_admin + admin for own company).
+  // .single() would error on multiple rows; instead we pick the highest-priority role.
+  const { data: adminRows } = await supabase
     .from('company_admins')
     .select('role, company_id')
     .eq('user_id', user.id)
-    .single()
 
-  const adminRecord = adminRecordRaw as { role: string; company_id: string } | null
+  type AdminRow = { role: string; company_id: string }
+  const rows = (adminRows ?? []) as AdminRow[]
+  const adminRecord: AdminRow | null =
+    rows.find(r => r.role === 'super_admin') ?? rows[0] ?? null
 
   if (adminRecord?.role === 'super_admin') {
     if (impersonation) {

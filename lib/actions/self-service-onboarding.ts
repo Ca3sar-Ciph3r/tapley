@@ -17,7 +17,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { buildPayFastPaymentForm, nextMonthBillingDate } from '@/lib/payfast/buildPaymentForm'
+import { buildPayFastPaymentForm, nextMonthBillingDate, nextYearBillingDate } from '@/lib/payfast/buildPaymentForm'
 import type { PayFastFormData } from '@/lib/payfast/buildPaymentForm'
 import type { BillingCycle } from '@/lib/utils/pricing'
 
@@ -221,6 +221,7 @@ export type CreatePayFastSetupFeeInput = {
   cardCount:      number
   setupFeeZar:    number
   monthlyFeeZar:  number
+  billingCycle:   BillingCycle
 }
 
 export type CreatePayFastSetupFeeResult = {
@@ -247,6 +248,16 @@ export async function createPayFastSetupFeeParams(
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'
 
+  const isAnnual = input.billingCycle === 'annual'
+  const annualTotalZar = input.monthlyFeeZar * 10
+
+  // For annual: charge setup fee + first year upfront (amount field).
+  // Recurring annual subscription then starts 12 months from today.
+  // For monthly: charge setup fee only; monthly subscription starts next month.
+  const chargeToday = isAnnual
+    ? input.setupFeeZar + annualTotalZar
+    : input.setupFeeZar
+
   // custom_str layout (onboarding):
   //   str3 = planName, str4 = cardCount, str5 = monthlyTotalZar
   const formData = buildPayFastPaymentForm({
@@ -255,8 +266,8 @@ export async function createPayFastSetupFeeParams(
     adminFirstName: input.adminFirstName,
     adminLastName:  input.adminLastName,
     adminEmail:     input.adminEmail,
-    setupFeeZar:    input.setupFeeZar,
-    itemName:       `Tapley Connect — ${input.planName} Plan Setup`,
+    setupFeeZar:    chargeToday,
+    itemName:       `Tapley Connect — ${input.planName} Plan${isAnnual ? ' (Annual)' : ''} Setup`,
     customStr3:     input.planName,
     customStr4:     String(input.cardCount),
     customStr5:     String(input.monthlyFeeZar),
@@ -264,9 +275,9 @@ export async function createPayFastSetupFeeParams(
     cancelUrl:      `${appUrl}/onboard/cancelled`,
     notifyUrl:      `${appUrl}/api/billing/payfast-itn`,
     subscription: {
-      recurringAmountZar: input.monthlyFeeZar,
-      billingDate:        nextMonthBillingDate(),
-      frequency:          3,
+      recurringAmountZar: isAnnual ? annualTotalZar : input.monthlyFeeZar,
+      billingDate:        isAnnual ? nextYearBillingDate() : nextMonthBillingDate(),
+      frequency:          isAnnual ? 6 : 3,
       cycles:             0,
     },
   })

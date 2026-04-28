@@ -51,12 +51,15 @@ export default function AddCardsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return }
 
+    // Fetch all rows — user may have multiple admin records; prefer one with company_id.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: adminRow } = await (supabase as any)
+    const { data: adminRows } = await (supabase as any)
       .from('company_admins')
       .select('company_id')
       .eq('user_id', user.id)
-      .single()
+
+    const allAdminRows = (adminRows ?? []) as { company_id: string | null }[]
+    const adminRow = allAdminRows.find(r => r.company_id !== null) ?? allAdminRows[0] ?? null
 
     let id: string | null = adminRow?.company_id ?? null
     if (!id) {

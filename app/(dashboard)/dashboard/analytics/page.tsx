@@ -20,6 +20,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectiveCompanyId } from '@/lib/actions/admin'
+import { AnalyticsFunnel, type FunnelStep } from '@/components/dashboard/analytics-funnel'
 
 // ---------------------------------------------------------------------------
 // Types

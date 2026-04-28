@@ -5,11 +5,14 @@
 // Client component — renders the interactive CTA buttons on the public card page.
 // Handles fire-and-forget tracking on WhatsApp click and Save Contact download.
 //
-// Three possible buttons:
-//   1. WhatsApp CTA — primary, always shown if waUrl is provided
-//   2. Save Contact  — always shown, downloads .vcf file
-//   3. Custom CTA    — optional, shown if customCtaUrl is set
+// Buttons rendered (in order):
+//   1. WhatsApp CTA    — primary, always shown if waUrl is provided
+//   2. Save Contact    — always shown, downloads .vcf file
+//   3. Custom CTA      — optional, shown if customCtaUrl is set
+//   4. Google Wallet   — shown when NEXT_PUBLIC_GOOGLE_WALLET_ENABLED=true
+//   5. Apple Wallet    — shown when NEXT_PUBLIC_GOOGLE_WALLET_ENABLED=true AND iOS detected
 
+import { useState, useEffect } from 'react'
 import { getOrCreateSessionId } from '@/lib/utils/session'
 
 interface CardActionsProps {
@@ -33,6 +36,16 @@ export function CardActions({
   secondaryColor,
   isDark,
 }: CardActionsProps) {
+  // iOS detection — initialise false to avoid SSR/hydration mismatch.
+  // Apple Wallet is iOS-only so we only show the button after confirming the UA.
+  const [isIOS, setIsIOS] = useState(false)
+  useEffect(() => {
+    setIsIOS(/iPhone|iPad|iPod/.test(navigator.userAgent))
+  }, [])
+
+  const googleWalletEnabled =
+    process.env.NEXT_PUBLIC_GOOGLE_WALLET_ENABLED === 'true'
+
   function trackWaClick() {
     const sessionId = getOrCreateSessionId()
     fetch('/api/view-event/wa-click', {
@@ -98,6 +111,40 @@ export function CardActions({
           style={ghostStyle}
         >
           {customCtaLabel}
+        </a>
+      )}
+
+      {/* Wallet buttons — gated by NEXT_PUBLIC_GOOGLE_WALLET_ENABLED feature flag.
+          Download official badges from https://developers.google.com/wallet/guides/branding
+          and place them at public/google-wallet-badge.png and public/apple-wallet-badge.png */}
+      {googleWalletEnabled && (
+        <a
+          href={`/api/wallet/google/${slug}`}
+          className="flex items-center justify-center rounded-full border py-3 transition-opacity active:opacity-75"
+          style={ghostStyle}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/google-wallet-badge.png"
+            alt="Add to Google Wallet"
+            className="h-10 w-auto"
+          />
+        </a>
+      )}
+
+      {/* Apple Wallet — only rendered on iOS user agents */}
+      {googleWalletEnabled && isIOS && (
+        <a
+          href={`/api/wallet/apple/${slug}`}
+          className="flex items-center justify-center rounded-full border py-3 transition-opacity active:opacity-75"
+          style={ghostStyle}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/apple-wallet-badge.png"
+            alt="Add to Apple Wallet"
+            className="h-10 w-auto"
+          />
         </a>
       )}
     </div>

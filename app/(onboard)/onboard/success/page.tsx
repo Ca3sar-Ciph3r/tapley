@@ -20,6 +20,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams }                        from 'next/navigation'
 import Link                                       from 'next/link'
+import { useWizardState }                         from '@/lib/hooks/use-wizard-state'
 
 type PollState = 'polling' | 'active' | 'timeout' | 'no_id'
 
@@ -31,8 +32,9 @@ const TIMEOUT_MS       = 60_000
 // ---------------------------------------------------------------------------
 
 function SuccessContent() {
-  const params    = useSearchParams()
-  const companyId = params.get('company_id')
+  const params      = useSearchParams()
+  const companyId   = params.get('company_id')
+  const { clearState } = useWizardState()
 
   const [state, setState] = useState<PollState>(companyId ? 'polling' : 'no_id')
   const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -49,6 +51,7 @@ function SuccessContent() {
         const res  = await fetch(`/api/billing/status?company_id=${companyId}`)
         const json = await res.json() as { status?: string }
         if (json.status === 'active') {
+          clearState()
           setState('active')
           return
         }
@@ -73,7 +76,7 @@ function SuccessContent() {
       if (timerRef.current)   clearTimeout(timerRef.current)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
-  }, [companyId])
+  }, [companyId, clearState])
 
   // ── no company_id in URL ─────────────────────────────────────────────────
   if (state === 'no_id') {

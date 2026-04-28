@@ -42,12 +42,17 @@ export default async function DashboardLayout({
   // for the sidebar and all write operations while active.
   const impersonation = await getImpersonationState()
 
-  // Step 1: Check if this user is a company admin or super admin
-  const { data: adminRecord } = await supabase
+  // Step 1: Check if this user is a company admin or super admin.
+  // Fetch all rows — user may have multiple (super_admin + admin for own company).
+  // Pick super_admin if present; otherwise take the first row.
+  const { data: adminRowsRaw } = await supabase
     .from('company_admins')
     .select('role, companies(name)')
     .eq('user_id', user.id)
-    .single()
+
+  type AdminRow = { role: string; companies: { name: string } | { name: string }[] | null }
+  const adminRows = (adminRowsRaw ?? []) as AdminRow[]
+  const adminRecord = adminRows.find(r => r.role === 'super_admin') ?? adminRows[0] ?? null
 
   let role: 'admin' | 'super_admin' | 'staff' = 'staff'
   let companyName = 'Tapley Connect'

@@ -7,7 +7,7 @@
 // QR Digital excluded from self-service (no physical card = different flow).
 
 import { useState } from 'react'
-import { PRICING_TIERS, calculateBilling, formatZar } from '@/lib/utils/pricing'
+import { PRICING_TIERS, calculateBilling, formatZar, getAnnualMonthlyEquivalent, getAnnualSavings } from '@/lib/utils/pricing'
 import type { WizardPlan } from '../_types'
 
 // Show only NFC tiers (exclude QR Digital and Solo which needs 1-4 cards — edge case)
@@ -102,10 +102,17 @@ export function StepPlan({ initial, onNext }: StepPlanProps) {
               )}
             </div>
             <p className="text-2xl font-bold text-slate-900 mb-0.5">
-              {formatZar(tier.monthlyRateZar)}
+              {formatZar(billingCycle === 'annual'
+                ? getAnnualMonthlyEquivalent(tier.monthlyRateZar)
+                : tier.monthlyRateZar)}
               <span className="text-sm font-normal text-slate-500">/card/mo</span>
             </p>
-            <p className="text-xs text-slate-500">
+            {billingCycle === 'annual' && (
+              <p className="text-[11px] text-teal-600 font-medium">
+                billed {formatZar(tier.monthlyRateZar * 10)}/card/year
+              </p>
+            )}
+            <p className="text-xs text-slate-500 mt-0.5">
               {tier.minCards}–{tier.maxCards} cards
             </p>
             <p className="text-xs text-slate-400 mt-2">
@@ -165,18 +172,32 @@ export function StepPlan({ initial, onNext }: StepPlanProps) {
       {/* Live pricing preview */}
       {previewBilling && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-6">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Pricing preview</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Pricing preview</p>
+            {billingCycle === 'annual' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 text-[11px] font-bold">
+                Save {formatZar(getAnnualSavings(previewBilling.monthlyTotalZar))}
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xl font-bold text-slate-900">
                 {formatZar(billingCycle === 'annual'
-                  ? previewBilling.annualDiscountedTotalZar / 12
+                  ? Math.round(previewBilling.annualDiscountedTotalZar / 12)
                   : previewBilling.monthlyTotalZar)}
                 <span className="text-sm font-normal text-slate-500">/mo</span>
               </p>
-              <p className="text-xs text-slate-400">
-                {billingCycle === 'annual' ? 'Billed annually' : 'Billed monthly'}
-              </p>
+              {billingCycle === 'annual' ? (
+                <>
+                  <p className="text-xs text-teal-600 font-medium">
+                    billed {formatZar(previewBilling.annualDiscountedTotalZar)}/year
+                  </p>
+                  <p className="text-xs text-slate-400">monthly equiv. (10 months paid)</p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-400">Billed monthly</p>
+              )}
             </div>
             <div>
               <p className="text-xl font-bold text-slate-900">{formatZar(previewBilling.setupTotalZar)}</p>

@@ -116,3 +116,10 @@ export function nextMonthBillingDate(): string {
   d.setMonth(d.getMonth() + 1)
   return d.toISOString().slice(0, 10)
 }
+
+export function nextYearBillingDate(): string {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() + 1)
+  d.setDate(1)
+  return d.toISOString().slice(0, 10)
+}

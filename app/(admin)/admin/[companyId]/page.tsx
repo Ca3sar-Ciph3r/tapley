@@ -543,9 +543,9 @@ function EmailTriggersPanel({
   }
 
   const emails = [
-    { type: 'day5' as const, label: 'Day 5 — Tap nudge', icon: 'touch_app', desc: 'Prompts admin to tap their first card.' },
-    { type: 'day14' as const, label: 'Day 14 — Analytics snapshot', icon: 'bar_chart', desc: 'First 2-week stats with top card.' },
-    { type: 'digest' as const, label: 'Monthly digest', icon: 'mail', desc: '30-day view count + top 3 cards.' },
+    { type: 'day5' as const, label: 'Force send Day 5 email', icon: 'touch_app', desc: 'Tap nudge · automated daily at 10:00 SAST · use this to send immediately.', automated: true },
+    { type: 'day14' as const, label: 'Force send Day 14 email', icon: 'bar_chart', desc: 'Analytics snapshot · automated daily at 10:00 SAST · use this to send immediately.', automated: true },
+    { type: 'digest' as const, label: 'Monthly digest', icon: 'mail', desc: '30-day view count + top 3 cards.', automated: false },
   ]
 
   return (
@@ -728,7 +728,7 @@ export default function CompanyDetailPage() {
       }
     })
 
-    setCompany(companyResult.data as Company)
+    setCompany((companyResult as unknown as { data: Company | null }).data as Company)
     setStaffCards(rows)
     setNfcCards(nfcRows)
     setTotalViews(viewsTotalResult.count ?? 0)

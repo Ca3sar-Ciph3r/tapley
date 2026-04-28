@@ -27,14 +27,15 @@ export default async function AdminLayout({
     redirect('/login')
   }
 
-  // Defence-in-depth: verify super_admin role
-  const { data: adminRecord } = await supabase
+  // Defence-in-depth: verify super_admin role.
+  // Fetch all rows — user may have multiple admin records (super_admin + admin for own company).
+  const { data: adminRows } = await supabase
     .from('company_admins')
     .select('role')
     .eq('user_id', user.id)
-    .single()
 
-  if (adminRecord?.role !== 'super_admin') {
+  const hasSuperAdmin = (adminRows ?? []).some(r => r.role === 'super_admin')
+  if (!hasSuperAdmin) {
     redirect('/dashboard')
   }
 

@@ -173,3 +173,17 @@ export function formatZar(amount: number): string {
     maximumFractionDigits: 2,
   })}`
 }
+
+// Annual billing helpers (10 months paid, 12 months service = 2 months free)
+
+export function getAnnualMonthlyEquivalent(monthlyRate: number): number {
+  return Math.round((monthlyRate * 10) / 12)
+}
+
+export function getAnnualTotal(monthlyRate: number): number {
+  return monthlyRate * 10
+}
+
+export function getAnnualSavings(monthlyRate: number): number {
+  return monthlyRate * 2
+}

@@ -4,22 +4,27 @@ import { WIZARD_STEPS, STEP_LABELS, type WizardStep } from '../_types'
 
 interface WizardProgressProps {
   currentStep: WizardStep
+  onStepClick?: (step: WizardStep) => void
 }
 
-export function WizardProgress({ currentStep }: WizardProgressProps) {
+export function WizardProgress({ currentStep, onStepClick }: WizardProgressProps) {
   const currentIndex = WIZARD_STEPS.indexOf(currentStep)
 
   return (
     <div className="flex items-center justify-center gap-0 mb-10">
       {WIZARD_STEPS.map((step, index) => {
-        const isDone    = index < currentIndex
-        const isCurrent = index === currentIndex
+        const isDone      = index < currentIndex
+        const isCurrent   = index === currentIndex
+        const isClickable = isDone && !!onStepClick
 
         return (
           <div key={step} className="flex items-center">
             {/* Step circle */}
             <div className="flex flex-col items-center">
-              <div
+              <button
+                type="button"
+                onClick={isClickable ? () => onStepClick(step) : undefined}
+                disabled={!isClickable}
                 className={[
                   'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200',
                   isDone
@@ -27,6 +32,7 @@ export function WizardProgress({ currentStep }: WizardProgressProps) {
                     : isCurrent
                     ? 'bg-teal-600 text-white ring-4 ring-teal-100'
                     : 'bg-slate-100 text-slate-400',
+                  isClickable ? 'cursor-pointer hover:opacity-80' : 'cursor-default',
                 ].join(' ')}
               >
                 {isDone ? (
@@ -36,7 +42,7 @@ export function WizardProgress({ currentStep }: WizardProgressProps) {
                 ) : (
                   index + 1
                 )}
-              </div>
+              </button>
               <span
                 className={[
                   'mt-1.5 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap',
