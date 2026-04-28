@@ -110,7 +110,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }).select('id, name, rate_per_card_zar, next_billing_date, billing_cycle, min_cards_committed, subscription_status')
       .eq('next_billing_date', today)
-      .in('subscription_status', ['active', 'trialing', 'past_due'])
+      .in('subscription_status', ['active', 'trial'])
   )
 
   if (fetchError) {

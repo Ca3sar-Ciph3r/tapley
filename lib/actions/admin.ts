@@ -366,7 +366,7 @@ export async function createCompany(
       website: input.website?.trim() || null,
       tagline: input.tagline?.trim() || null,
       subscription_plan: 'starter',
-      subscription_status: 'trialing',
+      subscription_status: 'trial',
       max_staff_cards: maxCards,
       pricing_tier_id: input.pricingTierId ?? null,
       rate_per_card_zar: input.ratePerCardZar ?? null,
@@ -865,90 +865,12 @@ export async function updateCardOrder(
   }
 
   const adminAny = supabaseAdmin as any
-
-  // Fetch the order before patching so we can send the shipping email if needed.
-  // Only fetch when transitioning to 'shipped' to avoid an extra round-trip on every save.
-  const isShipping = patch.status === 'shipped'
-  let companyAdminEmail: string | null = null
-  let companyName: string | null = null
-  let contactName: string | null = null
-  let trackingNumber: string | null = null
-
-  if (isShipping) {
-    const { data: order } = await adminAny
-      .from('card_orders')
-      .select('company_id, contact_name, tracking_number, companies(name)')
-      .eq('id', orderId)
-      .single()
-
-    if (order) {
-      companyName = Array.isArray(order.companies)
-        ? (order.companies[0]?.name ?? null)
-        : (order.companies?.name ?? null)
-      contactName = order.contact_name ?? null
-      trackingNumber = patch.tracking_number ?? order.tracking_number ?? null
-
-      // Fetch the company admin's email to notify
-      const { data: ca } = await adminAny
-        .from('company_admins')
-        .select('auth_users:user_id(email)')
-        .eq('company_id', order.company_id)
-        .eq('role', 'admin')
-        .limit(1)
-        .maybeSingle()
-
-      // Supabase join on auth.users is not directly available; fall back to primary_contact_email.
-      const { data: company } = await adminAny
-        .from('companies')
-        .select('primary_contact_email')
-        .eq('id', order.company_id)
-        .single()
-      companyAdminEmail = company?.primary_contact_email ?? null
-    }
-  }
-
   const { error } = await adminAny
     .from('card_orders')
     .update(patch)
     .eq('id', orderId)
 
-  if (error) return { error: error.message }
-
-  // Fire-and-forget shipping notification to the company admin
-  if (isShipping && companyAdminEmail) {
-    try {
-      const { getResend, FROM_ADDRESS } = await import('@/lib/email/resend')
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'
-      const greeting = contactName ? `Hi ${contactName.split(' ')[0]},` : 'Hi there,'
-      await getResend().emails.send({
-        from: FROM_ADDRESS,
-        to: companyAdminEmail,
-        subject: `Your NFC cards are on their way${companyName ? ` — ${companyName}` : ''}`,
-        html: `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /></head>
-<body style="font-family:sans-serif;color:#1e293b;max-width:600px;margin:0 auto;padding:32px 24px;">
-  <h1 style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:8px;">Your cards have shipped! 🎉</h1>
-  <p style="color:#475569;margin-bottom:24px;">${greeting}<br/>Your NFC cards are on their way to you.</p>
-  ${trackingNumber ? `<p style="color:#475569;margin-bottom:24px;">Tracking number: <strong style="font-family:monospace;color:#0d9488;">${trackingNumber}</strong></p>` : ''}
-  <p style="color:#475569;margin-bottom:24px;">
-    Once your cards arrive, assign them to your team members in the dashboard and they&apos;ll be live instantly — no printing required.
-  </p>
-  <a href="${appUrl}/dashboard/cards"
-     style="display:inline-block;padding:12px 24px;background:#0d9488;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">
-    Go to my team cards →
-  </a>
-  <hr style="margin:40px 0;border:none;border-top:1px solid #e2e8f0;" />
-  <p style="font-size:12px;color:#94a3b8;">Tapley Connect · Questions? Reply to this email.</p>
-</body>
-</html>`,
-      })
-    } catch {
-      // Non-fatal — shipping email failure must not block the status update
-    }
-  }
-
-  return {}
+  return { error: error?.message }
 }
 
 // ---------------------------------------------------------------------------

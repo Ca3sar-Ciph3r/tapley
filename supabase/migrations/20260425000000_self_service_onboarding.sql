@@ -26,7 +26,7 @@ END$$;
 ALTER TABLE companies
   ADD CONSTRAINT companies_subscription_status_check
   CHECK (subscription_status IN (
-    'trialing',
+    'trial',
     'active',
     'paused',
     'past_due',
