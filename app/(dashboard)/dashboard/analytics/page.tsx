@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectiveCompanyId } from '@/lib/actions/admin'
 import { AnalyticsFunnel, type FunnelStep } from '@/components/dashboard/analytics-funnel'
+import { DepartmentBreakdown, type DeptStats } from '@/components/dashboard/department-breakdown'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +45,7 @@ type RawStaffCard = {
   full_name: string
   job_title: string
   photo_url: string | null
+  department: string | null
 }
 
 type TopCard = RawStaffCard & { views: number; lastSeen: string | null }
@@ -127,6 +129,67 @@ function buildAreaPath(points: ChartPoint[]): string {
   const line = buildLinePath(points)
   if (!line) return ''
   return `${line} L ${CHART_W} ${CHART_H} L 0 ${CHART_H} Z`
+}
+
+// ---------------------------------------------------------------------------
+// Department stats builder
+// ---------------------------------------------------------------------------
+
+function buildDeptStats(staffCards: RawStaffCard[], views30d: RawView[]): DeptStats[] {
+  // Count views per card
+  const viewsPerCard = new Map<string, number>()
+  for (const v of views30d) {
+    if (v.staff_card_id) {
+      viewsPerCard.set(v.staff_card_id, (viewsPerCard.get(v.staff_card_id) ?? 0) + 1)
+    }
+  }
+
+  // Map card id → department label for fast lookup when iterating views
+  const cardDeptMap = new Map<string, string>()
+  for (const card of staffCards) {
+    cardDeptMap.set(card.id, card.department?.trim() || 'No department')
+  }
+
+  // Initialise per-department accumulators (staffCount + totalViews + topCard)
+  const deptMap = new Map<string, DeptStats>()
+  for (const card of staffCards) {
+    const dept = cardDeptMap.get(card.id)!
+    const cardViews = viewsPerCard.get(card.id) ?? 0
+    const prev = deptMap.get(dept) ?? {
+      department: dept,
+      staffCount: 0,
+      totalViews: 0,
+      waClicks: 0,
+      vcfDownloads: 0,
+      topCard: null,
+    }
+    const topCard =
+      cardViews > 0 && (prev.topCard === null || cardViews > prev.topCard.views)
+        ? { name: card.full_name, views: cardViews, photo_url: card.photo_url }
+        : prev.topCard
+    deptMap.set(dept, {
+      ...prev,
+      staffCount: prev.staffCount + 1,
+      totalViews: prev.totalViews + cardViews,
+      topCard,
+    })
+  }
+
+  // Accumulate WA clicks + VCF downloads per dept (requires iterating views again)
+  for (const v of views30d) {
+    if (!v.staff_card_id) continue
+    const dept = cardDeptMap.get(v.staff_card_id)
+    if (!dept) continue
+    const prev = deptMap.get(dept)
+    if (!prev) continue
+    deptMap.set(dept, {
+      ...prev,
+      waClicks: prev.waClicks + (v.wa_clicked ? 1 : 0),
+      vcfDownloads: prev.vcfDownloads + (v.vcf_downloaded ? 1 : 0),
+    })
+  }
+
+  return Array.from(deptMap.values()).sort((a, b) => b.totalViews - a.totalViews)
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +458,7 @@ export default function AnalyticsPage() {
   const [staffCards, setStaffCards] = useState<RawStaffCard[]>([])
   const [contactsCount30d, setContactsCount30d] = useState(0)
   const [contactsCountPrev30d, setContactsCountPrev30d] = useState(0)
+  const [activeDept, setActiveDept] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -421,7 +485,7 @@ export default function AnalyticsPage() {
     const [cardsResult, contacts30dResult, contactsPrev30dResult] = await Promise.all([
       supabase
         .from('staff_cards')
-        .select('id, full_name, job_title, photo_url')
+        .select('id, full_name, job_title, photo_url, department')
         .eq('company_id', effectiveCompanyId)
         .eq('is_active', true),
       supabase
@@ -495,9 +559,39 @@ export default function AnalyticsPage() {
 
   const avgPerDay = Math.round(totalViews / 30)
 
-  const conversions = views30d.filter(v => v.wa_clicked || v.vcf_downloaded).length
-  const conversionRate =
-    totalViews > 0 ? Math.round((conversions / totalViews) * 1000) / 10 : 0
+  const waClicks = views30d.filter(v => v.wa_clicked).length
+  const prevWaClicks = viewsPrev30d.filter(v => v.wa_clicked).length
+  const waConversionRate =
+    totalViews > 0 ? parseFloat(((waClicks / totalViews) * 100).toFixed(1)) : 0
+  const prevWaConversionRate =
+    prevTotalViews > 0 ? parseFloat(((prevWaClicks / prevTotalViews) * 100).toFixed(1)) : 0
+  const waConversionChange =
+    prevWaConversionRate > 0
+      ? Math.round(((waConversionRate - prevWaConversionRate) / prevWaConversionRate) * 100)
+      : null
+
+  const vcfDownloads = views30d.filter(v => v.vcf_downloaded).length
+
+  const funnelSteps: FunnelStep[] = [
+    {
+      label: 'Card views',
+      count: totalViews,
+      pct: 100,
+      color: '#0d9488',
+    },
+    {
+      label: 'WhatsApp tapped',
+      count: waClicks,
+      pct: totalViews > 0 ? Math.round((waClicks / totalViews) * 100) : 0,
+      color: '#25D366',
+    },
+    {
+      label: 'Contact saved',
+      count: vcfDownloads,
+      pct: totalViews > 0 ? Math.round((vcfDownloads / totalViews) * 100) : 0,
+      color: '#0ABFBC',
+    },
+  ]
 
   const contactsChange =
     contactsCountPrev30d > 0
@@ -507,7 +601,6 @@ export default function AnalyticsPage() {
   // Device breakdown
   const iosTaps = views30d.filter(v => v.os === 'ios').length
   const androidTaps = views30d.filter(v => v.os === 'android').length
-  const otherTaps = totalViews - iosTaps - androidTaps
   const iosPct = totalViews > 0 ? Math.round((iosTaps / totalViews) * 100) : 0
   const androidPct = totalViews > 0 ? Math.round((androidTaps / totalViews) * 100) : 0
   const otherPct = Math.max(0, 100 - iosPct - androidPct)
@@ -528,10 +621,21 @@ export default function AnalyticsPage() {
       lastSeenMap.set(v.staff_card_id, v.viewed_at)
     }
   }
-  const topCards: TopCard[] = staffCards
+
+  // Filter by active department when a department is selected
+  const filteredStaffCards =
+    activeDept !== null
+      ? staffCards.filter(c => (c.department?.trim() || 'No department') === activeDept)
+      : staffCards
+
+  const topCards: TopCard[] = filteredStaffCards
     .map(c => ({ ...c, views: viewCountMap.get(c.id) ?? 0, lastSeen: lastSeenMap.get(c.id) ?? null }))
     .sort((a, b) => b.views - a.views)
     .slice(0, 5)
+
+  // Department breakdown (derived from the same 30d window — no extra queries)
+  const deptStats = buildDeptStats(staffCards, views30d)
+  const hasDepartments = staffCards.some(c => c.department?.trim())
 
   // Chart points (use full 90d dataset so all three modes work without re-fetch)
   const chartPoints =
@@ -597,12 +701,12 @@ export default function AnalyticsPage() {
           change={null}
         />
         <StatCard
-          icon="conversion_path"
-          iconBg="rgba(0,201,167,0.1)"
-          iconColor="#00C9A7"
-          label="Conversion Rate"
-          value={`${conversionRate}%`}
-          change={null}
+          icon="chat"
+          iconBg="rgba(37,211,102,0.1)"
+          iconColor="#25D366"
+          label="WA Conversion"
+          value={`${waConversionRate}%`}
+          change={waConversionChange}
         />
         <StatCard
           icon="contacts"
@@ -614,10 +718,27 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      {/* Row 2: Engagement trend chart */}
+      {/* Row 2: Conversion funnel */}
+      <div className="glass-panel p-8 rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+        <div className="flex items-center gap-2 mb-6">
+          <div>
+            <h2 className="font-jakarta text-lg font-bold text-slate-900">Conversion funnel</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Last 30 days</p>
+          </div>
+          <button
+            title="Shows how many card views lead to WhatsApp conversations and contact saves."
+            className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 text-[11px] font-bold flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0 cursor-default"
+          >
+            ?
+          </button>
+        </div>
+        <AnalyticsFunnel steps={funnelSteps} />
+      </div>
+
+      {/* Row 3: Engagement trend chart */}
       <LineChart points={chartPoints} mode={chartMode} onModeChange={setChartMode} />
 
-      {/* Row 3: Device breakdown + Top team members */}
+      {/* Row 4: Device breakdown + Top team members */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-8">
         {/* Taps by device */}
         <div className="lg:col-span-6 glass-panel p-8 rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
@@ -650,9 +771,20 @@ export default function AnalyticsPage() {
 
         {/* Popular team members */}
         <div className="lg:col-span-4 glass-panel p-8 rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-          <h2 className="font-jakarta text-lg font-bold text-slate-900 mb-4">
-            Popular Team Members
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-jakarta text-lg font-bold text-slate-900">
+              {activeDept ? `${activeDept}` : 'Popular Team Members'}
+            </h2>
+            {activeDept && (
+              <button
+                onClick={() => setActiveDept(null)}
+                className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[14px] leading-none">close</span>
+                All
+              </button>
+            )}
+          </div>
           {topCards.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-8">No data yet</p>
           ) : (
@@ -664,6 +796,24 @@ export default function AnalyticsPage() {
           )}
         </div>
       </div>
+
+      {/* Row 5: Department breakdown */}
+      {hasDepartments ? (
+        <DepartmentBreakdown
+          deptStats={deptStats}
+          activeDept={activeDept}
+          onDeptClick={setActiveDept}
+        />
+      ) : (
+        staffCards.length > 0 && (
+          <div className="glass-panel p-8 rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+            <h2 className="font-jakarta text-lg font-bold text-slate-900 mb-1">By department</h2>
+            <p className="text-sm text-slate-400">
+              Add departments to your team cards to see this breakdown.
+            </p>
+          </div>
+        )
+      )}
     </div>
   )
 }

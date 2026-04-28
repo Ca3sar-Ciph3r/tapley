@@ -37,6 +37,9 @@ type CardOrder = {
   status: OrderStatus
   actual_delivery: string | null
   created_at: string
+  delivery_address: string | null
+  contact_name: string | null
+  contact_phone: string | null
 }
 
 const STATUS_ORDER: OrderStatus[] = ['pending', 'ordered', 'printing', 'shipped', 'delivered']
@@ -108,6 +111,9 @@ function EditPanel({
     total_cost: order.total_cost !== null ? String(order.total_cost) : '',
     notes: order.notes ?? '',
     actual_delivery: toDateInput(order.actual_delivery),
+    delivery_address: order.delivery_address ?? '',
+    contact_name: order.contact_name ?? '',
+    contact_phone: order.contact_phone ?? '',
   })
 
   function set(field: string, value: string) {
@@ -125,6 +131,9 @@ function EditPanel({
       total_cost: form.total_cost !== '' ? parseFloat(form.total_cost) : null,
       notes: form.notes || null,
       actual_delivery: form.actual_delivery || null,
+      delivery_address: form.delivery_address || null,
+      contact_name: form.contact_name || null,
+      contact_phone: form.contact_phone || null,
     }
     await onSave(order.id, updates)
     setSaving(false)
@@ -201,6 +210,29 @@ function EditPanel({
             <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)}
               placeholder="Any notes about this order…"
               className={`${inputCls} resize-none`} />
+          </div>
+
+          {/* Delivery details — populated by the company admin order-request form */}
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Delivery details</p>
+            <div>
+              <label className={labelCls}>Delivery address</label>
+              <textarea rows={2} value={form.delivery_address} onChange={e => set('delivery_address', e.target.value)}
+                placeholder="Street address, city, postal code"
+                className={`${inputCls} resize-none`} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Contact name</label>
+                <input type="text" placeholder="Full name" value={form.contact_name}
+                  onChange={e => set('contact_name', e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Contact phone</label>
+                <input type="tel" placeholder="+27 82 123 4567" value={form.contact_phone}
+                  onChange={e => set('contact_phone', e.target.value)} className={inputCls} />
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -561,7 +593,7 @@ export default function FulfillmentPage() {
 
     const { data, error } = await supabaseAny
       .from('card_orders')
-      .select('id, company_id, quantity, order_date, estimated_delivery, tracking_number, total_cost, notes, status, actual_delivery, created_at, companies(name)')
+      .select('id, company_id, quantity, order_date, estimated_delivery, tracking_number, total_cost, notes, status, actual_delivery, created_at, delivery_address, contact_name, contact_phone, companies(name)')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -585,6 +617,9 @@ export default function FulfillmentPage() {
       status: row.status as OrderStatus,
       actual_delivery: row.actual_delivery,
       created_at: row.created_at,
+      delivery_address: row.delivery_address ?? null,
+      contact_name: row.contact_name ?? null,
+      contact_phone: row.contact_phone ?? null,
     }))
 
     setOrders(rows)

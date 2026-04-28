@@ -624,6 +624,29 @@ export function DashboardOverview() {
         />
       </div>
 
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {([
+          { href: '/dashboard/cards/new',           icon: 'person_add',    label: 'Add team member' },
+          { href: '/dashboard/branding',             icon: 'palette',       label: 'Update branding' },
+          { href: '/dashboard/billing/order-cards',  icon: 'credit_card',   label: 'Order NFC cards' },
+          { href: '/dashboard/analytics',            icon: 'bar_chart',     label: 'View analytics'  },
+        ] as { href: string; icon: string; label: string }[]).map(({ href, icon, label }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex items-center gap-2.5 px-4 py-3 glass-panel rounded-xl shadow-sm hover:-translate-y-0.5 transition-transform duration-150 group"
+          >
+            <span className="material-symbols-outlined text-[18px] text-teal-600 leading-none flex-shrink-0">
+              {icon}
+            </span>
+            <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">
+              {label}
+            </span>
+          </Link>
+        ))}
+      </div>
+
       {/* Chart + Top Cards */}
       <div className="grid grid-cols-12 gap-6">
         {/* Tap Activity chart — col-span-8 */}

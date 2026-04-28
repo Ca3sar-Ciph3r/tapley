@@ -448,6 +448,141 @@ export type UpdateStaffCardInput = {
   photo_url?: string | null
 }
 
+// ---------------------------------------------------------------------------
+// requestAdditionalCards
+//
+// Company Admin places a physical NFC card order request.
+// Inserts a card_orders row and notifies Luke via email.
+//
+// NOTE: max_staff_cards is NOT bumped here. Luke manually increases the limit
+// once he has confirmed payment and is ready to ship. This is intentional —
+// the system trusts Luke to handle fulfilment and payment confirmation.
+// ---------------------------------------------------------------------------
+
+export type RequestAdditionalCardsInput = {
+  quantity: number
+  deliveryAddress: string
+  contactName: string
+  contactPhone: string
+  notes: string | null
+}
+
+export async function requestAdditionalCards(
+  input: RequestAdditionalCardsInput
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  // Resolve company — regular admin or super admin impersonating a company
+  const impersonation = await getImpersonationState()
+  let companyId: string | null = null
+
+  if (impersonation?.companyId) {
+    const { data: adminRecord } = await supabase
+      .from('company_admins').select('role').eq('user_id', user.id).single()
+    if (!adminRecord || !['admin', 'super_admin'].includes(adminRecord.role)) {
+      return { error: 'Unauthorised' }
+    }
+    companyId = impersonation.companyId
+  } else {
+    const { data: adminRecord } = await supabase
+      .from('company_admins')
+      .select('company_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    companyId = adminRecord?.company_id ?? null
+  }
+
+  if (!companyId) return { error: 'No company found for this account.' }
+
+  // Validate
+  const qty = Math.round(input.quantity)
+  if (qty < 1 || qty > 100) return { error: 'Quantity must be between 1 and 100.' }
+  if (!input.deliveryAddress.trim()) return { error: 'Delivery address is required.' }
+  if (!input.contactName.trim()) return { error: 'Contact name is required.' }
+
+  // Fetch company name for the notification email
+  const adminAny = supabaseAdmin as any
+  const { data: company } = await adminAny
+    .from('companies')
+    .select('name')
+    .eq('id', companyId)
+    .single()
+  const companyName: string = company?.name ?? 'Unknown Company'
+
+  // INSERT — card_orders has no INSERT policy for company admins so use admin client.
+  // The admin client bypasses RLS; company scope is ensured by the explicit company_id value.
+  const { error: insertError } = await adminAny
+    .from('card_orders')
+    .insert({
+      company_id: companyId,
+      quantity: qty,
+      delivery_address: input.deliveryAddress.trim(),
+      contact_name: input.contactName.trim(),
+      contact_phone: input.contactPhone.trim() || null,
+      notes: input.notes?.trim() || null,
+      status: 'pending',
+    })
+
+  if (insertError) return { error: insertError.message }
+
+  // Notify Luke — fire and forget (failure must not block the order)
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL
+  if (adminEmail) {
+    try {
+      const { getResend, FROM_ADDRESS } = await import('@/lib/email/resend')
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tapleyconnect.co.za'
+      const cardLabel = qty === 1 ? '1 card' : `${qty} cards`
+      await getResend().emails.send({
+        from: FROM_ADDRESS,
+        to: adminEmail,
+        subject: `New card order: ${companyName} — ${cardLabel}`,
+        html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family:sans-serif;color:#1e293b;max-width:600px;margin:0 auto;padding:32px 24px;">
+  <h1 style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:8px;">New NFC Card Order</h1>
+  <p style="color:#475569;margin-bottom:24px;">A company admin has submitted a card order request.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+    <tr>
+      <td style="padding:10px 0;font-size:13px;color:#64748b;width:38%;">Company</td>
+      <td style="padding:10px 0;font-size:13px;font-weight:700;color:#0f172a;">${companyName}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;">Quantity</td>
+      <td style="padding:10px 0;font-size:13px;font-weight:700;color:#0f172a;">${cardLabel}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;vertical-align:top;">Delivery address</td>
+      <td style="padding:10px 0;font-size:13px;color:#0f172a;white-space:pre-line;">${input.deliveryAddress.trim()}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;">Contact</td>
+      <td style="padding:10px 0;font-size:13px;color:#0f172a;">${input.contactName.trim()}${input.contactPhone.trim() ? ` · ${input.contactPhone.trim()}` : ''}</td>
+    </tr>
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td style="padding:10px 0;font-size:13px;color:#64748b;vertical-align:top;">Notes</td>
+      <td style="padding:10px 0;font-size:13px;color:#64748b;">${input.notes?.trim() || '—'}</td>
+    </tr>
+  </table>
+  <a href="${appUrl}/admin/fulfillment"
+     style="display:inline-block;padding:12px 24px;background:#0d9488;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">
+    View in Fulfillment Panel →
+  </a>
+  <hr style="margin:40px 0;border:none;border-top:1px solid #e2e8f0;" />
+  <p style="font-size:12px;color:#94a3b8;">Tapley Connect · Card Order Notification</p>
+</body>
+</html>`,
+      })
+    } catch {
+      // Non-fatal — email failure must not block the order
+    }
+  }
+
+  return {}
+}
+
 export async function updateStaffCard(
   staffCardId: string,
   input: UpdateStaffCardInput

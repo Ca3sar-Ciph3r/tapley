@@ -307,6 +307,21 @@ export default function BillingPage() {
             )
           })()}
 
+          {/* Order more physical NFC cards */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Need more physical NFC cards?</p>
+              <p className="text-xs text-slate-500 mt-0.5">Request additional cards — Luke will confirm shipping and payment within 1 business day.</p>
+            </div>
+            <Link
+              href="/dashboard/billing/order-cards"
+              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+            >
+              <span className="material-symbols-outlined text-[16px]">credit_card</span>
+              Order NFC cards
+            </Link>
+          </div>
+
           {/* Upgrade CTA + Cancel subscription */}
           {plan.subscriptionStatus === 'active' && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
