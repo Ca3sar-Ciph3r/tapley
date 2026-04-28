@@ -17,13 +17,14 @@ import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 
 interface LeadCaptureSheetProps {
-  staffCardId: string
-  staffName: string
-  companyName: string
-  logoUrl: string | null
-  primaryColor: string
-  secondaryColor: string
-  isDark: boolean
+  staffCardId:     string
+  nfcCardId:       string
+  staffName:       string
+  companyName:     string
+  logoUrl:         string | null
+  primaryColor:    string
+  secondaryColor:  string
+  isDark:          boolean
 }
 
 type SubmitState = 'idle' | 'submitting' | 'success' | 'error'
@@ -32,6 +33,7 @@ const SESSION_KEY = 'tc_lead_captured'
 
 export function LeadCaptureSheet({
   staffCardId,
+  nfcCardId,
   staffName,
   companyName,
   logoUrl,
@@ -40,33 +42,40 @@ export function LeadCaptureSheet({
   isDark,
 }: LeadCaptureSheetProps) {
   const [visible, setVisible] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
+  const [open, setOpen]       = useState(false)
+
+  // Form fields
+  const [name,    setName]    = useState('')
+  const [email,   setEmail]   = useState('')
+  const [phone,   setPhone]   = useState('')
+  const [company, setCompany] = useState('')
+  const [message, setMessage] = useState('')
+  const [popia,   setPopia]   = useState(false)
+
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
-  const [errorMsg, setErrorMsg] = useState('')
+  const [errorMsg,    setErrorMsg]    = useState('')
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Derived colours
-  const bg = isDark ? '#1a1b1f' : '#ffffff'
-  const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
-  const textPrimary = isDark ? '#ffffff' : '#111827'
-  const textSecondary = isDark ? 'rgba(255,255,255,0.6)' : '#6B7280'
-  const inputBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)'
-  const inputBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
-  const inputText = isDark ? '#ffffff' : '#111827'
+  const bg             = isDark ? '#1a1b1f' : '#ffffff'
+  const border         = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+  const textPrimary    = isDark ? '#ffffff' : '#111827'
+  const textSecondary  = isDark ? 'rgba(255,255,255,0.6)' : '#6B7280'
+  const inputBg        = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)'
+  const inputBorder    = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
+  const inputText      = isDark ? '#ffffff' : '#111827'
   const placeholderColor = isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF'
 
+  const popiaText = `I consent to ${companyName} storing my contact details in compliance with POPIA`
+
   useEffect(() => {
-    // Don't show if already captured/dismissed this session
     if (typeof window !== 'undefined' && sessionStorage.getItem(SESSION_KEY)) {
       return
     }
 
     timerRef.current = setTimeout(() => {
       setVisible(true)
-      // Tiny delay so the element is mounted before we trigger the open animation
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setOpen(true))
       })
@@ -85,47 +94,68 @@ export function LeadCaptureSheet({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setErrorMsg('')
 
+    // Client-side validation
     if (!name.trim()) {
       setErrorMsg('Please enter your name.')
       return
     }
 
-    setErrorMsg('')
+    if (!email.trim() && !phone.trim()) {
+      setErrorMsg('Please provide at least an email address or phone number.')
+      return
+    }
+
+    if (!popia) {
+      setErrorMsg('Please tick the consent checkbox to continue.')
+      return
+    }
+
     setSubmitState('submitting')
 
     try {
       const res = await fetch('/api/lead-capture', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staffCardId,
-          name: name.trim(),
-          email: email.trim() || null,
-          phone: phone.trim() || null,
+          staff_card_id:      staffCardId,
+          nfc_card_id:        nfcCardId,
+          visitor_name:       name.trim(),
+          visitor_email:      email.trim() || null,
+          visitor_phone:      phone.trim() || null,
+          visitor_company:    company.trim() || null,
+          message:            message.trim() || null,
+          popia_consent:      true,
+          popia_consent_text: popiaText,
         }),
       })
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error((body as { error?: string }).error ?? 'Submission failed')
+        const data = body as { error?: string; errors?: Record<string, string> }
+        const msg = data.error
+          ?? Object.values(data.errors ?? {}).find(Boolean)
+          ?? 'Submission failed. Please try again.'
+        throw new Error(msg)
       }
 
       setSubmitState('success')
       sessionStorage.setItem(SESSION_KEY, 'submitted')
-      // Auto-close after success state
       setTimeout(() => {
         setOpen(false)
         setTimeout(() => setVisible(false), 400)
-      }, 2000)
+      }, 3000)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
+      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
       setErrorMsg(msg)
       setSubmitState('error')
     }
   }
 
   if (!visible) return null
+
+  const isSubmitting = submitState === 'submitting'
 
   return (
     <>
@@ -134,11 +164,11 @@ export function LeadCaptureSheet({
         role="presentation"
         onClick={dismiss}
         style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 40,
+          position:   'fixed',
+          inset:      0,
+          zIndex:     40,
           background: 'rgba(0,0,0,0.5)',
-          opacity: open ? 1 : 0,
+          opacity:    open ? 1 : 0,
           transition: 'opacity 0.35s ease',
         }}
       />
@@ -149,31 +179,33 @@ export function LeadCaptureSheet({
         aria-modal="true"
         aria-label="Share your details"
         style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 50,
-          backgroundColor: bg,
+          position:            'fixed',
+          bottom:              0,
+          left:                0,
+          right:               0,
+          zIndex:              50,
+          backgroundColor:     bg,
           borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          borderTop: `1px solid ${border}`,
-          padding: '20px 20px 36px',
-          maxWidth: 480,
-          margin: '0 auto',
-          transform: open ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
-          boxShadow: '0 -8px 32px rgba(0,0,0,0.24)',
+          borderTopRightRadius:24,
+          borderTop:           `1px solid ${border}`,
+          padding:             '20px 20px 40px',
+          maxWidth:            480,
+          margin:              '0 auto',
+          transform:           open ? 'translateY(0)' : 'translateY(100%)',
+          transition:          'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1)',
+          boxShadow:           '0 -8px 32px rgba(0,0,0,0.24)',
+          overflowY:           'auto',
+          maxHeight:           '90dvh',
         }}
       >
         {/* Drag handle */}
         <div
           style={{
-            width: 40,
-            height: 4,
-            borderRadius: 999,
+            width:           40,
+            height:          4,
+            borderRadius:    999,
             backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
-            margin: '0 auto 20px',
+            margin:          '0 auto 20px',
           }}
         />
 
@@ -196,17 +228,17 @@ export function LeadCaptureSheet({
               ) : (
                 <div
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 10,
+                    width:           44,
+                    height:          44,
+                    borderRadius:    10,
                     backgroundColor: primaryColor,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    color: '#fff',
-                    fontWeight: 700,
-                    fontSize: 18,
+                    display:         'flex',
+                    alignItems:      'center',
+                    justifyContent:  'center',
+                    flexShrink:      0,
+                    color:           '#fff',
+                    fontWeight:      700,
+                    fontSize:        18,
                   }}
                 >
                   {companyName.charAt(0).toUpperCase()}
@@ -265,42 +297,131 @@ export function LeadCaptureSheet({
                   placeholderColor={placeholderColor}
                   textPrimary={textPrimary}
                 />
+                <InputField
+                  label="Your company"
+                  type="text"
+                  value={company}
+                  onChange={setCompany}
+                  placeholder="Optional"
+                  autoComplete="organization"
+                  inputBg={inputBg}
+                  inputBorder={inputBorder}
+                  inputText={inputText}
+                  placeholderColor={placeholderColor}
+                  textPrimary={textPrimary}
+                />
+
+                {/* Message textarea */}
+                <div>
+                  <label
+                    htmlFor="lcs-message"
+                    style={{
+                      display:    'block',
+                      fontSize:   12,
+                      fontWeight: 600,
+                      color:      textPrimary,
+                      marginBottom: 6,
+                      opacity:    0.75,
+                    }}
+                  >
+                    Message
+                  </label>
+                  <textarea
+                    id="lcs-message"
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder="Optional — anything you'd like to say"
+                    maxLength={200}
+                    rows={3}
+                    style={{
+                      width:           '100%',
+                      padding:         '11px 14px',
+                      borderRadius:    10,
+                      border:          `1px solid ${inputBorder}`,
+                      backgroundColor: inputBg,
+                      color:           inputText,
+                      fontSize:        14,
+                      outline:         'none',
+                      boxSizing:       'border-box',
+                      resize:          'none',
+                    }}
+                    onFocus={e => (e.currentTarget.style.borderColor = 'rgba(100,100,255,0.4)')}
+                    onBlur={e => (e.currentTarget.style.borderColor = inputBorder)}
+                  />
+                  <style>{`#lcs-message::placeholder { color: ${placeholderColor}; }`}</style>
+                  <p style={{ fontSize: 11, color: textSecondary, textAlign: 'right', marginTop: 2 }}>
+                    {message.length}/200
+                  </p>
+                </div>
+
+                {/* POPIA consent checkbox — required */}
+                <label
+                  style={{
+                    display:    'flex',
+                    alignItems: 'flex-start',
+                    gap:        10,
+                    cursor:     'pointer',
+                    marginTop:  4,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={popia}
+                    onChange={e => setPopia(e.target.checked)}
+                    required
+                    style={{ marginTop: 2, flexShrink: 0, accentColor: primaryColor }}
+                  />
+                  <span style={{ fontSize: 12, color: textSecondary, lineHeight: 1.5 }}>
+                    {popiaText}.{' '}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: primaryColor, textDecoration: 'underline' }}
+                    >
+                      Privacy policy
+                    </a>
+                    {' '}
+                    <span style={{ color: '#EF4444' }}>*</span>
+                  </span>
+                </label>
               </div>
 
+              {/* Error message */}
               {errorMsg && (
                 <p style={{ marginTop: 10, fontSize: 13, color: '#EF4444' }}>{errorMsg}</p>
               )}
 
-              {/* Submit */}
+              {/* Submit button */}
               <button
                 type="submit"
-                disabled={submitState === 'submitting'}
+                disabled={isSubmitting || !popia}
                 style={{
-                  marginTop: 18,
-                  width: '100%',
-                  padding: '14px 0',
-                  borderRadius: 12,
+                  marginTop:       18,
+                  width:           '100%',
+                  padding:         '14px 0',
+                  borderRadius:    12,
                   backgroundColor: primaryColor,
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: 15,
-                  border: 'none',
-                  cursor: submitState === 'submitting' ? 'not-allowed' : 'pointer',
-                  opacity: submitState === 'submitting' ? 0.7 : 1,
-                  transition: 'opacity 0.2s',
+                  color:           '#ffffff',
+                  fontWeight:      700,
+                  fontSize:        15,
+                  border:          'none',
+                  cursor:          (isSubmitting || !popia) ? 'not-allowed' : 'pointer',
+                  opacity:         (isSubmitting || !popia) ? 0.6 : 1,
+                  transition:      'opacity 0.2s',
                 }}
               >
-                {submitState === 'submitting' ? 'Sending…' : 'Share my details'}
+                {isSubmitting ? 'Sending…' : 'Share my details'}
               </button>
 
               {/* Accent bar at bottom of button */}
               <div
                 style={{
-                  height: 3,
-                  borderRadius: '0 0 12px 12px',
+                  height:          3,
+                  borderRadius:    '0 0 12px 12px',
                   backgroundColor: secondaryColor,
-                  marginTop: -3,
-                  width: '100%',
+                  marginTop:       -3,
+                  width:           '100%',
                 }}
               />
 
@@ -309,15 +430,15 @@ export function LeadCaptureSheet({
                 type="button"
                 onClick={dismiss}
                 style={{
-                  marginTop: 14,
-                  width: '100%',
-                  textAlign: 'center',
-                  fontSize: 13,
-                  color: textSecondary,
+                  marginTop:  14,
+                  width:      '100%',
+                  textAlign:  'center',
+                  fontSize:   13,
+                  color:      textSecondary,
                   background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px 0',
+                  border:     'none',
+                  cursor:     'pointer',
+                  padding:    '4px 0',
                 }}
               >
                 No thanks, skip
@@ -335,18 +456,18 @@ export function LeadCaptureSheet({
 // ---------------------------------------------------------------------------
 
 interface InputFieldProps {
-  label: string
-  type: string
-  value: string
-  onChange: (v: string) => void
-  placeholder: string
-  required?: boolean
-  autoComplete?: string
-  inputBg: string
-  inputBorder: string
-  inputText: string
+  label:            string
+  type:             string
+  value:            string
+  onChange:         (v: string) => void
+  placeholder:      string
+  required?:        boolean
+  autoComplete?:    string
+  inputBg:          string
+  inputBorder:      string
+  inputText:        string
   placeholderColor: string
-  textPrimary: string
+  textPrimary:      string
 }
 
 function InputField({
@@ -369,9 +490,17 @@ function InputField({
     <div>
       <label
         htmlFor={id}
-        style={{ display: 'block', fontSize: 12, fontWeight: 600, color: textPrimary, marginBottom: 6, opacity: 0.75 }}
+        style={{
+          display:    'block',
+          fontSize:   12,
+          fontWeight: 600,
+          color:      textPrimary,
+          marginBottom: 6,
+          opacity:    0.75,
+        }}
       >
-        {label}{required && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}
+        {label}
+        {required && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}
       </label>
       <input
         id={id}
@@ -382,49 +511,45 @@ function InputField({
         required={required}
         autoComplete={autoComplete}
         style={{
-          width: '100%',
-          padding: '11px 14px',
-          borderRadius: 10,
-          border: `1px solid ${inputBorder}`,
+          width:           '100%',
+          padding:         '11px 14px',
+          borderRadius:    10,
+          border:          `1px solid ${inputBorder}`,
           backgroundColor: inputBg,
-          color: inputText,
-          fontSize: 15,
-          outline: 'none',
-          boxSizing: 'border-box',
+          color:           inputText,
+          fontSize:        15,
+          outline:         'none',
+          boxSizing:       'border-box',
         }}
-        // Inline placeholder colour via a workaround using CSS custom property
-        // — browser placeholder colour can't be set via style prop directly.
         onFocus={e => (e.currentTarget.style.borderColor = 'rgba(100,100,255,0.4)')}
         onBlur={e => (e.currentTarget.style.borderColor = inputBorder)}
       />
-      {/* Inject placeholder colour via a global style tag (once per instance) */}
       <style>{`#${id}::placeholder { color: ${placeholderColor}; }`}</style>
     </div>
   )
 }
 
 interface SuccessStateProps {
-  primaryColor: string
+  primaryColor:   string
   secondaryColor: string
-  textPrimary: string
-  textSecondary: string
-  staffName: string
+  textPrimary:    string
+  textSecondary:  string
+  staffName:      string
 }
 
 function SuccessState({ primaryColor, secondaryColor, textPrimary, textSecondary, staffName }: SuccessStateProps) {
   return (
     <div style={{ textAlign: 'center', padding: '16px 0 8px' }}>
-      {/* Checkmark circle */}
       <div
         style={{
-          width: 64,
-          height: 64,
-          borderRadius: '50%',
+          width:           64,
+          height:          64,
+          borderRadius:    '50%',
           backgroundColor: primaryColor,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          margin: '0 auto 16px',
+          display:         'flex',
+          alignItems:      'center',
+          justifyContent:  'center',
+          margin:          '0 auto 16px',
         }}
       >
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -432,18 +557,18 @@ function SuccessState({ primaryColor, secondaryColor, textPrimary, textSecondary
         </svg>
       </div>
       <p style={{ fontWeight: 700, fontSize: 17, color: textPrimary, marginBottom: 6 }}>
-        Details shared!
+        Details sent!
       </p>
       <p style={{ fontSize: 14, color: textSecondary, lineHeight: 1.5 }}>
         {staffName.split(' ')[0]} will be in touch with you soon.
       </p>
       <div
         style={{
-          height: 3,
-          borderRadius: 999,
+          height:          3,
+          borderRadius:    999,
           backgroundColor: secondaryColor,
-          width: 48,
-          margin: '16px auto 0',
+          width:           48,
+          margin:          '16px auto 0',
         }}
       />
     </div>

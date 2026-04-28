@@ -149,6 +149,22 @@ export async function POST(request: NextRequest) {
           }),
         }).catch((err) => console.error('[view-event] make.com webhook failed:', err))
         // No await — fire and forget
+
+        // Log the notification attempt — always insert regardless of
+        // whether Make.com delivery succeeds (we only know we fired it)
+        supabaseAdmin
+          .from('wa_notifications_log')
+          .insert({
+            company_id:       null, // company_id is nullable — avoids an extra query here
+            staff_card_id:    staff_card_id,
+            recipient_number: staffCard.whatsapp_number ?? null,
+            message_template: 'card_view',
+            channel:          'make_webhook',
+            status:           'sent',
+          })
+          .then(() => {})
+          .catch((err: unknown) => console.error('[view-event] wa_log insert failed:', err))
+        // No await — must not block the 200 response
       }
     }
 

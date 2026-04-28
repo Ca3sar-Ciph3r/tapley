@@ -219,15 +219,18 @@ export default async function CardPage({ params }: PageProps) {
     return (
       <main className="min-h-screen bg-white">
         <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
-        <LeadCaptureSheet
-          staffCardId={staffCard.id}
-          staffName={staffCard.full_name}
-          companyName={company?.name ?? ''}
-          logoUrl={company?.logo_url ?? null}
-          primaryColor={primaryColor}
-          secondaryColor={secondaryColor}
-          isDark={isDark}
-        />
+        {staffCard.show_optin_form && (
+          <LeadCaptureSheet
+            staffCardId={staffCard.id}
+            nfcCardId={nfcCard.id}
+            staffName={staffCard.full_name}
+            companyName={company?.name ?? ''}
+            logoUrl={company?.logo_url ?? null}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            isDark={isDark}
+          />
+        )}
         <div className="mx-auto max-w-sm pb-4">
 
           {/* Hero — full-bleed primary colour: logo + photo + name + title */}
@@ -364,15 +367,18 @@ export default async function CardPage({ params }: PageProps) {
     return (
       <main className="min-h-screen bg-white">
         <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
-        <LeadCaptureSheet
-          staffCardId={staffCard.id}
-          staffName={staffCard.full_name}
-          companyName={company?.name ?? ''}
-          logoUrl={company?.logo_url ?? null}
-          primaryColor={primaryColor}
-          secondaryColor={secondaryColor}
-          isDark={isDark}
-        />
+        {staffCard.show_optin_form && (
+          <LeadCaptureSheet
+            staffCardId={staffCard.id}
+            nfcCardId={nfcCard.id}
+            staffName={staffCard.full_name}
+            companyName={company?.name ?? ''}
+            logoUrl={company?.logo_url ?? null}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            isDark={isDark}
+          />
+        )}
 
         {/* Company logo — full width header */}
         <header
@@ -505,15 +511,18 @@ export default async function CardPage({ params }: PageProps) {
     >
       {/* View event — fires after hydration, fire-and-forget, never blocks render */}
       <ViewEventTracker nfcCardId={nfcCard.id} staffCardId={staffCard.id} />
-      <LeadCaptureSheet
-        staffCardId={staffCard.id}
-        staffName={staffCard.full_name}
-        companyName={company?.name ?? ''}
-        logoUrl={company?.logo_url ?? null}
-        primaryColor={primaryColor}
-        secondaryColor={secondaryColor}
-        isDark={isDark}
-      />
+      {staffCard.show_optin_form && (
+        <LeadCaptureSheet
+          staffCardId={staffCard.id}
+          nfcCardId={nfcCard.id}
+          staffName={staffCard.full_name}
+          companyName={company?.name ?? ''}
+          logoUrl={company?.logo_url ?? null}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+          isDark={isDark}
+        />
+      )}
 
       <div className="mx-auto max-w-sm pb-4">
 

@@ -1,85 +1,168 @@
 // app/api/lead-capture/route.ts
 //
-// Public endpoint — called by the LeadCaptureSheet on card pages (ISR).
-// No user auth: any visitor to a card page can submit.
-// Uses supabaseAdmin (service role) — the only safe pattern for public writes
-// where there is no authenticated session.
+// POST — public endpoint, called by LeadCaptureSheet on ISR card pages.
+// No user session: any card-page visitor can submit. Uses supabaseAdmin
+// (service role) for all DB writes — the only safe pattern here.
 //
-// Inserts into `contacts` with source='card_tap' and the staff_card_id
-// that generated the lead, so CRM attribution is always preserved.
+// POPIA compliance: does NOT store IP address or device fingerprint.
+// See CLAUDE.md Rule 5, JOURNEYS.md Journey 7.
+//
+// Returns 400 with { errors: {...} } for field-level validation failures.
+// Returns 500 with { error: '...' } for server errors (user-facing message).
+// Returns 200 with { ok: true } on success.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
 
-interface LeadPayload {
-  staffCardId: string
-  name: string
-  email?: string | null
-  phone?: string | null
+interface LeadBody {
+  staff_card_id:      string
+  nfc_card_id:        string | null
+  visitor_name:       string
+  visitor_email:      string | null
+  visitor_phone:      string | null
+  visitor_company:    string | null
+  message:            string | null
+  popia_consent:      boolean
+  popia_consent_text: string
 }
 
-// Basic E.164 normalisation for South African numbers.
-// Accepts: 0821234567, 27821234567, +27821234567 → +27821234567
-// Non-SA or already-formatted numbers are returned as-is.
-function normalisePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '')
-  if (digits.startsWith('0') && digits.length === 10) {
-    return `+27${digits.slice(1)}`
-  }
-  if (digits.startsWith('27') && digits.length === 11) {
-    return `+${digits}`
-  }
-  return raw.trim()
-}
+type FieldErrors = Partial<Record<string, string>>
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let body: unknown
   try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
+    }
+
+    const b = body as Partial<LeadBody>
+
+    // --- Field validation ---
+    const fieldErrors: FieldErrors = {}
+
+    if (!b.visitor_name?.trim()) {
+      fieldErrors.visitor_name = 'Your name is required.'
+    }
+
+    if (!b.visitor_email?.trim() && !b.visitor_phone?.trim()) {
+      fieldErrors.visitor_email = 'Please provide at least an email address or phone number.'
+    }
+
+    if (!b.popia_consent) {
+      fieldErrors.popia_consent = 'You must consent to data storage to continue.'
+    }
+
+    if (!b.staff_card_id || typeof b.staff_card_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      return NextResponse.json({ errors: fieldErrors }, { status: 400 })
+    }
+
+    // --- Verify staff card exists and opt-in form is enabled ---
+    const { data: staffCard, error: cardError } = await supabaseAdmin
+      .from('staff_cards')
+      .select('company_id, show_optin_form, full_name')
+      .eq('id', b.staff_card_id)
+      .eq('is_active', true)
+      .single()
+
+    if (cardError || !staffCard) {
+      return NextResponse.json({ error: 'Staff card not found.' }, { status: 400 })
+    }
+
+    if (!staffCard.show_optin_form) {
+      return NextResponse.json(
+        { error: 'The contact form is not enabled for this card.' },
+        { status: 400 }
+      )
+    }
+
+    // --- Normalise phone to E.164 format ---
+    const phone = b.visitor_phone?.trim()
+      ? normalisePhoneNumber(b.visitor_phone.trim())
+      : null
+
+    // --- Duplicate check: same email + company prevents duplicate contacts ---
+    if (b.visitor_email?.trim()) {
+      const { data: existing } = await supabaseAdmin
+        .from('contacts')
+        .select('id')
+        .eq('company_id', staffCard.company_id)
+        .eq('email', b.visitor_email.trim().toLowerCase())
+        .maybeSingle()
+
+      if (existing) {
+        // Upsert: update the existing contact with the most recent card attribution
+        await supabaseAdmin
+          .from('contacts')
+          .update({
+            captured_via_card_id: b.staff_card_id,
+            updated_at:           new Date().toISOString(),
+          })
+          .eq('id', existing.id)
+
+        return NextResponse.json({ ok: true })
+      }
+    }
+
+    // --- Insert new contact ---
+    const now = new Date().toISOString()
+    const { error: insertError } = await supabaseAdmin
+      .from('contacts')
+      .insert({
+        company_id:           staffCard.company_id,
+        captured_via_card_id: b.staff_card_id,
+        full_name:            b.visitor_name!.trim(),
+        email:                b.visitor_email?.trim().toLowerCase() || null,
+        phone,
+        company_name:         b.visitor_company?.trim() || null,
+        notes:                b.message?.trim() || null,
+        popia_consent:        true,
+        popia_consent_at:     now,
+        popia_consent_text:   b.popia_consent_text?.trim() ||
+                              'I consent to storing my contact details in compliance with POPIA',
+        status:               'new',
+        updated_at:           now,
+      })
+
+    if (insertError) {
+      console.error('[lead-capture] insert error:', insertError.message)
+      return NextResponse.json(
+        { error: 'Could not save your details. Please try again.' },
+        { status: 500 }
+      )
+    }
+
+    // --- Fire Make.com webhook (fire-and-forget, never blocks response) ---
+    const webhookUrl = process.env.MAKE_WEBHOOK_CONTACT_CAPTURED
+    if (webhookUrl) {
+      fetch(webhookUrl, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event:         'contact.captured',
+          staff_name:    staffCard.full_name,
+          visitor_name:  b.visitor_name,
+          visitor_email: b.visitor_email ?? null,
+          visitor_phone: phone,
+          company_name:  b.visitor_company ?? null,
+        }),
+      }).catch((err: unknown) =>
+        console.error('[lead-capture] make.com webhook failed:', err)
+      )
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (error: unknown) {
+    console.error('[lead-capture]', error)
+    return NextResponse.json(
+      { error: 'Could not save your details. Please try again.' },
+      { status: 500 }
+    )
   }
-
-  const payload = body as Partial<LeadPayload>
-
-  if (!payload.staffCardId || typeof payload.staffCardId !== 'string') {
-    return NextResponse.json({ error: 'staffCardId is required' }, { status: 400 })
-  }
-  if (!payload.name || typeof payload.name !== 'string' || !payload.name.trim()) {
-    return NextResponse.json({ error: 'name is required' }, { status: 400 })
-  }
-
-  // Derive company_id from DB — never trust the request body for this
-  const { data: staffCard, error: cardError } = await supabaseAdmin
-    .from('staff_cards')
-    .select('company_id')
-    .eq('id', payload.staffCardId)
-    .eq('is_active', true)
-    .single()
-
-  if (cardError || !staffCard) {
-    return NextResponse.json({ error: 'Invalid staff card' }, { status: 400 })
-  }
-
-  const phone = payload.phone ? normalisePhone(String(payload.phone)) : null
-
-  const { error } = await supabaseAdmin
-    .from('contacts')
-    .insert({
-      company_id: staffCard.company_id,
-      staff_card_id: payload.staffCardId,
-      full_name: payload.name.trim(),
-      email: payload.email?.trim() || null,
-      phone,
-      whatsapp_number: phone,
-      source: 'card_tap',
-    })
-
-  if (error) {
-    // eslint-disable-next-line no-console
-    console.error('[lead-capture] Insert failed:', error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true }, { status: 201 })
 }
