@@ -16,11 +16,18 @@ function buildQrUrl(slug: string): string {
 }
 
 /**
- * Generate a QR code as a PNG Buffer (for streaming via API route).
+ * Generate a QR code as PNG bytes (for streaming via API route).
+ *
+ * Returned as a Uint8Array backed by a plain ArrayBuffer rather than the Buffer
+ * that `qrcode` hands back: Node's Buffer is typed over ArrayBufferLike, which
+ * includes SharedArrayBuffer and so is not assignable to the web BodyInit that
+ * `new NextResponse(...)` expects.
  */
-export async function generateQRCodeBuffer(slug: string): Promise<Buffer> {
+export async function generateQRCodeBuffer(
+  slug: string
+): Promise<Uint8Array<ArrayBuffer>> {
   const url = buildQrUrl(slug)
-  return QRCode.toBuffer(url, {
+  const png = await QRCode.toBuffer(url, {
     width: 400,
     margin: 2,
     color: {
@@ -29,6 +36,7 @@ export async function generateQRCodeBuffer(slug: string): Promise<Buffer> {
     },
     errorCorrectionLevel: 'H',
   })
+  return new Uint8Array(png)
 }
 
 /**

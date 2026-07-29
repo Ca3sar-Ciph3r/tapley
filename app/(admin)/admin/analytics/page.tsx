@@ -414,6 +414,9 @@ export default function AdminAnalyticsPage() {
           const cardToCompany = Object.fromEntries(staffCardsAll.map(c => [c.id, c.company_id]))
           const viewsByCompany: Record<string, number> = {}
           for (const v of recentViews) {
+            // staff_card_id is nullable (ON DELETE SET NULL), so it cannot
+            // index a Record without being narrowed first.
+            if (!v.staff_card_id) continue
             const cid = cardToCompany[v.staff_card_id]
             if (cid) viewsByCompany[cid] = (viewsByCompany[cid] ?? 0) + 1
           }
@@ -432,11 +435,14 @@ export default function AdminAnalyticsPage() {
       }
 
       // 6. Referral funnel
-      const { data: referrals, error: refError } = await (supabaseAny['from']('referrals')
-        .select('id, status') as unknown as Promise<{
-          data: { id: string; status: string }[] | null
-          error: { message: string } | null
-        }>)
+      //
+      // Previously routed through the untyped `supabaseAny` escape hatch
+      // because `referrals` was missing from the generated types. The types
+      // have been regenerated and the table is present, so this is a normal
+      // typed query — the cast was hiding the fact that the schema was stale.
+      const { data: referrals, error: refError } = await supabase
+        .from('referrals')
+        .select('id, status')
 
       if (!refError && referrals) {
         setFunnel({

@@ -150,21 +150,33 @@ export async function POST(request: NextRequest) {
         }).catch((err) => console.error('[view-event] make.com webhook failed:', err))
         // No await — fire and forget
 
-        // Log the notification attempt — always insert regardless of
-        // whether Make.com delivery succeeds (we only know we fired it)
-        supabaseAdmin
-          .from('wa_notifications_log')
-          .insert({
-            company_id:       null, // company_id is nullable — avoids an extra query here
-            staff_card_id:    staff_card_id,
-            recipient_number: staffCard.whatsapp_number ?? null,
-            message_template: 'card_view',
-            channel:          'make_webhook',
-            status:           'sent',
-          })
-          .then(() => {})
-          .catch((err: unknown) => console.error('[view-event] wa_log insert failed:', err))
-        // No await — must not block the 200 response
+        // Log the notification attempt — we only know that we fired it, not
+        // that Make.com delivered it.
+        //
+        // Guarded on whatsapp_number because wa_notifications_log.recipient_number
+        // is NOT NULL. Passing null here failed the insert at runtime for every
+        // staff member without a WhatsApp number, silently — the type error
+        // that would have caught it was suppressed by ignoreBuildErrors.
+        if (staffCard.whatsapp_number) {
+          void supabaseAdmin
+            .from('wa_notifications_log')
+            .insert({
+              company_id:       null, // nullable — avoids an extra query here
+              staff_card_id:    staff_card_id,
+              recipient_number: staffCard.whatsapp_number,
+              message_template: 'card_view',
+              channel:          'make_webhook',
+              status:           'sent',
+            })
+            .then(
+              () => {},
+              (err: unknown) =>
+                console.error('[view-event] wa_log insert failed:', err)
+            )
+          // No await — must not block the 200 response. Rejection is handled by
+          // the second argument to then(): a PostgREST builder is a PromiseLike
+          // and has no .catch().
+        }
       }
     }
 

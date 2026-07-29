@@ -7,10 +7,11 @@ const nextConfig: NextConfig = {
     // Warnings only — do not fail the build on lint warnings
     ignoreDuringBuilds: true,
   },
-  typescript: {
-    // Type errors are fixed in code; skip blocking the build for MVP
-    ignoreBuildErrors: true,
-  },
+  // NOTE: typescript.ignoreBuildErrors was set here and is deliberately gone.
+  // It was hiding 78 real type errors from every production deploy — the data
+  // layer had collapsed to `never`, so nothing in it was type-checked at all.
+  // Suppressing the check does not make the code correct, it makes the
+  // breakage invisible. Fix errors rather than reinstating this.
   images: {
     remotePatterns: [
       {

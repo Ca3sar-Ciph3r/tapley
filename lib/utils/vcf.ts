@@ -7,6 +7,8 @@
 // Format: vCard 3.0 — broadest compatibility with iOS and Android.
 // Line endings: CRLF (\r\n) as per RFC 6350.
 
+import type { SocialLinks } from '@/lib/utils/social-links'
+
 interface StaffCardData {
   full_name: string
   job_title: string

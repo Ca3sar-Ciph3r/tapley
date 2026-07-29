@@ -69,8 +69,11 @@ export async function updateOnboardingStep(
     .eq('id', companyId)
     .single()
 
-  const existing = (current?.onboarding_checklist ?? {}) as Record<string, unknown>
-  const updated = { ...existing, [stepKey]: complete }
+  // Typed as boolean rather than unknown: onboarding_checklist is a jsonb
+  // column, and Record<string, unknown> is wider than Json so it will not
+  // assign. Every value in this checklist is a boolean.
+  const existing = (current?.onboarding_checklist ?? {}) as Record<string, boolean>
+  const updated: Record<string, boolean> = { ...existing, [stepKey]: complete }
 
   const { error } = await supabaseAdmin
     .from('companies')

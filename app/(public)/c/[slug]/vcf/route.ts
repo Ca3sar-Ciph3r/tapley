@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { generateVCF } from '@/lib/utils/vcf'
+import { parseSocialLinks } from '@/lib/utils/social-links'
 
 export async function GET(
   _request: NextRequest,
@@ -50,7 +51,11 @@ export async function GET(
       : staffCard.companies
 
     // Step 3: Generate vCard content
-    const vcfContent = generateVCF(staffCard, company, slug)
+    const vcfContent = generateVCF(
+      { ...staffCard, social_links: parseSocialLinks(staffCard.social_links) },
+      company,
+      slug
+    )
     const filename = `${staffCard.full_name.replace(/\s+/g, '_')}.vcf`
 
     return new NextResponse(vcfContent, {

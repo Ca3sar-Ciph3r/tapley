@@ -1,7 +1,7 @@
 // AUTO-GENERATED — do not edit manually.
 // Regenerate after any schema change:
 //   npx supabase gen types typescript --project-id jcsiawsztrmffwqxasld > lib/types/database.ts
-// Last generated: 2026-04-08
+// Last generated: 2026-07-29
 
 export type Json =
   | string
@@ -19,6 +19,112 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_records: {
+        Row: {
+          amount_zar: number
+          billing_date: string
+          company_id: string
+          created_at: string
+          description: string | null
+          id: string
+          status: string
+          type: string
+        }
+        Insert: {
+          amount_zar: number
+          billing_date?: string
+          company_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          status?: string
+          type: string
+        }
+        Update: {
+          amount_zar?: number
+          billing_date?: string
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_records_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_orders: {
+        Row: {
+          actual_delivery: string | null
+          company_id: string
+          contact_name: string | null
+          contact_phone: string | null
+          cost_per_card: number | null
+          created_at: string
+          delivery_address: string | null
+          estimated_delivery: string | null
+          id: string
+          notes: string | null
+          order_date: string
+          quantity: number
+          status: string
+          supplier: string | null
+          total_cost: number | null
+          tracking_number: string | null
+        }
+        Insert: {
+          actual_delivery?: string | null
+          company_id: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          cost_per_card?: number | null
+          created_at?: string
+          delivery_address?: string | null
+          estimated_delivery?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string
+          quantity: number
+          status?: string
+          supplier?: string | null
+          total_cost?: number | null
+          tracking_number?: string | null
+        }
+        Update: {
+          actual_delivery?: string | null
+          company_id?: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          cost_per_card?: number | null
+          created_at?: string
+          delivery_address?: string | null
+          estimated_delivery?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string
+          quantity?: number
+          status?: string
+          supplier?: string | null
+          total_cost?: number | null
+          tracking_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_orders_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_views: {
         Row: {
           browser: string | null
@@ -100,8 +206,68 @@ export type Database = {
           },
         ]
       }
+      change_requests: {
+        Row: {
+          company_id: string
+          created_at: string
+          details: string
+          id: string
+          requested_by: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          staff_card_id: string | null
+          status: string
+          type: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          details: string
+          id?: string
+          requested_by?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          staff_card_id?: string | null
+          status?: string
+          type?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          details?: string
+          id?: string
+          requested_by?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          staff_card_id?: string | null
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_staff_card_id_fkey"
+            columns: ["staff_card_id"]
+            isOneToOne: false
+            referencedRelation: "staff_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
+          archived_at: string | null
+          billing_cycle: string
+          billing_email: string | null
           brand_dark_mode: boolean
           brand_primary_color: string
           brand_secondary_color: string
@@ -112,33 +278,55 @@ export type Database = {
           cta_label: string
           cta_url: string | null
           custom_domain: string | null
+          deletion_scheduled_at: string | null
+          dpa_accepted_at: string | null
+          dpa_version: string | null
+          free_months_balance: number
           id: string
+          industry: string | null
           internal_notes: string | null
+          is_qr_digital: boolean
+          location: string | null
           logo_url: string | null
           max_staff_cards: number
           min_cards_committed: number | null
+          monthly_rate_override: number | null
           name: string
           next_billing_date: string | null
           nfc_cards_ordered: number | null
           nfc_delivery_address: string | null
           onboarding_checklist: Json
+          payfast_subscription_token: string | null
           pricing_tier_id: string | null
+          pricing_v2_enabled: boolean
           primary_contact_email: string | null
           primary_contact_name: string | null
           primary_contact_phone: string | null
           primary_contact_whatsapp: string | null
           rate_per_card_zar: number | null
+          referral_code: string | null
+          referred_by_company_id: string | null
+          self_service: boolean
+          setup_fee_paid: boolean
+          setup_fee_paid_at: string | null
+          setup_fee_payfast_token: string | null
           setup_fee_per_card_zar: number | null
           slug: string
           subscription_ends_at: string | null
           subscription_plan: string
+          subscription_renewed_at: string | null
+          subscription_start: string | null
           subscription_status: string
           tagline: string | null
+          trial_ends_at: string | null
           updated_at: string
           wa_admin_number: string | null
           website: string | null
         }
         Insert: {
+          archived_at?: string | null
+          billing_cycle?: string
+          billing_email?: string | null
           brand_dark_mode?: boolean
           brand_primary_color?: string
           brand_secondary_color?: string
@@ -149,33 +337,55 @@ export type Database = {
           cta_label?: string
           cta_url?: string | null
           custom_domain?: string | null
+          deletion_scheduled_at?: string | null
+          dpa_accepted_at?: string | null
+          dpa_version?: string | null
+          free_months_balance?: number
           id?: string
+          industry?: string | null
           internal_notes?: string | null
+          is_qr_digital?: boolean
+          location?: string | null
           logo_url?: string | null
           max_staff_cards?: number
           min_cards_committed?: number | null
+          monthly_rate_override?: number | null
           name: string
           next_billing_date?: string | null
           nfc_cards_ordered?: number | null
           nfc_delivery_address?: string | null
           onboarding_checklist?: Json
+          payfast_subscription_token?: string | null
           pricing_tier_id?: string | null
+          pricing_v2_enabled?: boolean
           primary_contact_email?: string | null
           primary_contact_name?: string | null
           primary_contact_phone?: string | null
           primary_contact_whatsapp?: string | null
           rate_per_card_zar?: number | null
+          referral_code?: string | null
+          referred_by_company_id?: string | null
+          self_service?: boolean
+          setup_fee_paid?: boolean
+          setup_fee_paid_at?: string | null
+          setup_fee_payfast_token?: string | null
           setup_fee_per_card_zar?: number | null
           slug: string
           subscription_ends_at?: string | null
           subscription_plan?: string
+          subscription_renewed_at?: string | null
+          subscription_start?: string | null
           subscription_status?: string
           tagline?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
           wa_admin_number?: string | null
           website?: string | null
         }
         Update: {
+          archived_at?: string | null
+          billing_cycle?: string
+          billing_email?: string | null
           brand_dark_mode?: boolean
           brand_primary_color?: string
           brand_secondary_color?: string
@@ -186,28 +396,47 @@ export type Database = {
           cta_label?: string
           cta_url?: string | null
           custom_domain?: string | null
+          deletion_scheduled_at?: string | null
+          dpa_accepted_at?: string | null
+          dpa_version?: string | null
+          free_months_balance?: number
           id?: string
+          industry?: string | null
           internal_notes?: string | null
+          is_qr_digital?: boolean
+          location?: string | null
           logo_url?: string | null
           max_staff_cards?: number
           min_cards_committed?: number | null
+          monthly_rate_override?: number | null
           name?: string
           next_billing_date?: string | null
           nfc_cards_ordered?: number | null
           nfc_delivery_address?: string | null
           onboarding_checklist?: Json
+          payfast_subscription_token?: string | null
           pricing_tier_id?: string | null
+          pricing_v2_enabled?: boolean
           primary_contact_email?: string | null
           primary_contact_name?: string | null
           primary_contact_phone?: string | null
           primary_contact_whatsapp?: string | null
           rate_per_card_zar?: number | null
+          referral_code?: string | null
+          referred_by_company_id?: string | null
+          self_service?: boolean
+          setup_fee_paid?: boolean
+          setup_fee_paid_at?: string | null
+          setup_fee_payfast_token?: string | null
           setup_fee_per_card_zar?: number | null
           slug?: string
           subscription_ends_at?: string | null
           subscription_plan?: string
+          subscription_renewed_at?: string | null
+          subscription_start?: string | null
           subscription_status?: string
           tagline?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
           wa_admin_number?: string | null
           website?: string | null
@@ -218,6 +447,13 @@ export type Database = {
             columns: ["pricing_tier_id"]
             isOneToOne: false
             referencedRelation: "pricing_tiers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "companies_referred_by_company_id_fkey"
+            columns: ["referred_by_company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -273,9 +509,12 @@ export type Database = {
           popia_consent_at: string | null
           popia_consent_ip: string | null
           popia_consent_text: string | null
+          source: string
+          staff_card_id: string | null
           status: string
           tags: string[]
           updated_at: string
+          whatsapp_number: string | null
         }
         Insert: {
           captured_via_card_id?: string | null
@@ -295,9 +534,12 @@ export type Database = {
           popia_consent_at?: string | null
           popia_consent_ip?: string | null
           popia_consent_text?: string | null
+          source?: string
+          staff_card_id?: string | null
           status?: string
           tags?: string[]
           updated_at?: string
+          whatsapp_number?: string | null
         }
         Update: {
           captured_via_card_id?: string | null
@@ -317,9 +559,12 @@ export type Database = {
           popia_consent_at?: string | null
           popia_consent_ip?: string | null
           popia_consent_text?: string | null
+          source?: string
+          staff_card_id?: string | null
           status?: string
           tags?: string[]
           updated_at?: string
+          whatsapp_number?: string | null
         }
         Relationships: [
           {
@@ -338,6 +583,51 @@ export type Database = {
           },
           {
             foreignKeyName: "contacts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_staff_card_id_fkey"
+            columns: ["staff_card_id"]
+            isOneToOne: false
+            referencedRelation: "staff_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_deletion_log: {
+        Row: {
+          company_id: string
+          created_at: string
+          executed_at: string | null
+          id: string
+          notes: string | null
+          scheduled_at: string
+          triggered_by: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          executed_at?: string | null
+          id?: string
+          notes?: string | null
+          scheduled_at: string
+          triggered_by?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          executed_at?: string | null
+          id?: string
+          notes?: string | null
+          scheduled_at?: string
+          triggered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_deletion_log_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -466,6 +756,48 @@ export type Database = {
         }
         Relationships: []
       }
+      referrals: {
+        Row: {
+          created_at: string
+          credited_at: string | null
+          id: string
+          referred_company_id: string
+          referrer_company_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          credited_at?: string | null
+          id?: string
+          referred_company_id: string
+          referrer_company_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          credited_at?: string | null
+          id?: string
+          referred_company_id?: string
+          referrer_company_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_company_id_fkey"
+            columns: ["referred_company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_company_id_fkey"
+            columns: ["referrer_company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_cards: {
         Row: {
           bio: string | null
@@ -479,6 +811,7 @@ export type Database = {
           id: string
           is_active: boolean
           job_title: string
+          location: string | null
           nfc_card_id: string | null
           phone: string | null
           photo_url: string | null
@@ -503,6 +836,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           job_title: string
+          location?: string | null
           nfc_card_id?: string | null
           phone?: string | null
           photo_url?: string | null
@@ -527,6 +861,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           job_title?: string
+          location?: string | null
           nfc_card_id?: string | null
           phone?: string | null
           photo_url?: string | null
@@ -628,6 +963,10 @@ export type Database = {
       auth_company_id: { Args: never; Returns: string }
       auth_staff_card_id: { Args: never; Returns: string }
       generate_unique_slug: { Args: never; Returns: string }
+      increment_free_months: {
+        Args: { company_id_arg: string }
+        Returns: undefined
+      }
       is_super_admin: { Args: never; Returns: boolean }
     }
     Enums: {
