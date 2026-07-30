@@ -33,6 +33,7 @@ import { buildWaLink, getFirstName, isValidPhoneNumber } from '@/lib/utils/whats
 import { parseSocialLinks, hasSocialLinks } from '@/lib/utils/social-links'
 import { sanitiseExternalUrl } from '@/lib/utils/safe-url'
 import { resolveCardTheme, type CardTheme } from '@/lib/utils/card-theme'
+import { toLogoSize } from '@/lib/constants/logo-size'
 import { ViewEventTracker } from '@/components/card/view-event-tracker'
 import { CardActions } from '@/components/card/card-actions'
 import { CardHero } from '@/components/card/card-hero'
@@ -79,6 +80,7 @@ interface CompanyData {
   location: string | null
   cta_label: string
   cta_url: string | null
+  logo_size: string
 }
 
 type StaffCardWithCompany = Tables<'staff_cards'> & {
@@ -88,7 +90,7 @@ type StaffCardWithCompany = Tables<'staff_cards'> & {
 // Selected in three places — keep identical so the ISR payload is stable.
 const COMPANY_FIELDS = `
   name, logo_url, brand_primary_color, brand_secondary_color,
-  brand_dark_mode, website, tagline, location, cta_label, cta_url
+  brand_dark_mode, website, tagline, location, cta_label, cta_url, logo_size
 `
 
 // ---------------------------------------------------------------------------
@@ -273,6 +275,7 @@ export default async function CardPage({ params }: PageProps) {
           location={location}
           photoUrl={staffCard.photo_url}
           logoUrl={company?.logo_url ?? null}
+          logoSize={toLogoSize(company?.logo_size)}
           theme={theme}
         />
 

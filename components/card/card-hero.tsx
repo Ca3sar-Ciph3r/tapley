@@ -13,6 +13,16 @@
 import Image from 'next/image'
 import type { CardTheme } from '@/lib/utils/card-theme'
 import { getInitials } from '@/lib/utils/card-theme'
+import { LOGO_SIZES, type LogoSize } from '@/lib/constants/logo-size'
+
+// Logos are transparent PNGs sitting straight on a photograph, so nothing
+// guarantees contrast behind them. A drop-shadow follows the alpha channel and
+// so traces the mark's own outline rather than drawing a box around it — the
+// logo keeps its clear background and still separates from whatever is behind
+// it. Two stacked shadows: a tight dark one for definition on light photos,
+// a soft wider one for lift on busy ones.
+const LOGO_LIFT =
+  'drop-shadow(0 1px 1px rgba(0,0,0,0.32)) drop-shadow(0 3px 10px rgba(0,0,0,0.28))'
 
 interface CardHeroProps {
   fullName: string
@@ -25,6 +35,8 @@ interface CardHeroProps {
    * photo it sits in the top-left corner on its own backdrop.
    */
   logoUrl?: string | null
+  /** Company's chosen logo scale. Defaults to medium. */
+  logoSize?: LogoSize
   theme: CardTheme
   /**
    * Skip the Next image optimiser. Needed by the dashboard's live preview,
@@ -48,12 +60,14 @@ export function CardHero({
   location,
   photoUrl,
   logoUrl = null,
+  logoSize = 'm',
   theme,
   unoptimizedImage = false,
   heightClassName = 'h-[56vh] min-h-[300px] sm:h-[52vh] lg:h-[56vh]',
 }: CardHeroProps) {
   // Omit the separator entirely when only one of the two is set.
   const metaParts = [companyName, location].filter(Boolean) as string[]
+  const logo = LOGO_SIZES[logoSize] ?? LOGO_SIZES.m
 
   return (
     <div className={`relative shrink-0 ${heightClassName}`}>
@@ -77,7 +91,10 @@ export function CardHero({
           {logoUrl ? (
             // The company's own mark beats generated initials whenever one
             // exists — it is the thing the recipient actually recognises.
-            <div className="relative -translate-y-[12%] h-[38%] w-[62%]">
+            <div
+              className="relative -translate-y-[12%]"
+              style={{ width: logo.standaloneWidth, height: logo.standaloneHeight }}
+            >
               <Image
                 src={logoUrl}
                 alt={companyName ?? 'Company logo'}
@@ -85,7 +102,7 @@ export function CardHero({
                 className="object-contain"
                 priority
                 unoptimized={unoptimizedImage}
-                sizes="(max-width: 640px) 62vw, 280px"
+                sizes="(max-width: 640px) 80vw, 360px"
               />
             </div>
           ) : (
@@ -103,24 +120,27 @@ export function CardHero({
       )}
 
       {/*
-        With a photo present the logo cannot sit on the photo unaided — logos
-        are drawn for a known background and most are transparent PNGs, so a
-        dark mark lands on dark hair and disappears. A near-opaque white chip
-        gives it the clean ground it was designed for, and reads consistently
-        whatever the photo behind it happens to be.
+        Top-left, straight on the photo with no chip behind it, so a
+        transparent PNG keeps its clear background. LOGO_LIFT does the work the
+        chip used to: it traces the mark itself rather than boxing it in.
       */}
       {photoUrl && logoUrl && (
-        <div className="absolute left-[18px] top-[18px] flex h-[46px] max-w-[45%] items-center rounded-xl bg-white/95 px-2.5 py-1.5 shadow-sm ring-1 ring-black/5">
-          <div className="relative h-full w-full min-w-[54px]">
-            <Image
-              src={logoUrl}
-              alt={companyName ?? 'Company logo'}
-              fill
-              className="object-contain object-left"
-              unoptimized={unoptimizedImage}
-              sizes="180px"
-            />
-          </div>
+        <div
+          className="absolute left-[18px] top-[18px]"
+          style={{
+            height: logo.overlayHeight,
+            width: logo.overlayMaxWidth,
+            filter: LOGO_LIFT,
+          }}
+        >
+          <Image
+            src={logoUrl}
+            alt={companyName ?? 'Company logo'}
+            fill
+            className="object-contain object-left-top"
+            unoptimized={unoptimizedImage}
+            sizes="260px"
+          />
         </div>
       )}
 

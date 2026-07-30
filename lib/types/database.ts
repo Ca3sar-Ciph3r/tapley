@@ -287,6 +287,7 @@ export type Database = {
           internal_notes: string | null
           is_qr_digital: boolean
           location: string | null
+          logo_size: string
           logo_url: string | null
           max_staff_cards: number
           min_cards_committed: number | null
@@ -346,6 +347,7 @@ export type Database = {
           internal_notes?: string | null
           is_qr_digital?: boolean
           location?: string | null
+          logo_size?: string
           logo_url?: string | null
           max_staff_cards?: number
           min_cards_committed?: number | null
@@ -405,6 +407,7 @@ export type Database = {
           internal_notes?: string | null
           is_qr_digital?: boolean
           location?: string | null
+          logo_size?: string
           logo_url?: string | null
           max_staff_cards?: number
           min_cards_committed?: number | null

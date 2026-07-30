@@ -20,6 +20,7 @@ import {
   type UpdateCompanyBrandingInput,
 } from '@/lib/actions/branding'
 import { getImpersonationState } from '@/lib/actions/admin'
+import { LOGO_SIZES, LOGO_SIZE_VALUES, toLogoSize, type LogoSize } from '@/lib/constants/logo-size'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +37,7 @@ type CompanyData = {
   brand_dark_mode: boolean
   cta_label: string
   cta_url: string
+  logo_size: LogoSize
 }
 
 type FormValues = CompanyData & {
@@ -80,7 +82,9 @@ function normaliseHex(raw: string): string {
   return trimmed
 }
 
-// Resize an image file to max 400×400px for logos, returning a JPEG Blob.
+// Resize a logo to max 400x400. Exports PNG and never fills the canvas, so a
+// transparent background survives the round trip — the card renders logos with
+// no chip behind them and relies on that alpha.
 async function resizeLogo(file: File): Promise<Blob> {
   const MAX = 400
   return new Promise((resolve, reject) => {
@@ -248,6 +252,7 @@ export default function BrandingPage() {
       brand_dark_mode: boolean
       cta_label: string
       cta_url: string | null
+      logo_size: string | null
     }
     type AdminRow = {
       company_id: string
@@ -295,7 +300,7 @@ export default function BrandingPage() {
       const supabaseAny = supabase as any
       const { data: impersonatedCompany, error: impError } = await supabaseAny
         .from('companies')
-        .select('id, name, tagline, website, logo_url, brand_primary_color, brand_secondary_color, brand_dark_mode, cta_label, cta_url')
+        .select('id, name, tagline, website, logo_url, brand_primary_color, brand_secondary_color, brand_dark_mode, cta_label, cta_url, logo_size')
         .eq('id', impersonation.companyId)
         .single()
       if (impError || !impersonatedCompany) {
@@ -316,6 +321,7 @@ export default function BrandingPage() {
         brand_dark_mode: impCo.brand_dark_mode ?? true,
         cta_label: impCo.cta_label ?? 'Send me a WhatsApp',
         cta_url: impCo.cta_url ?? '',
+        logo_size: toLogoSize(impCo.logo_size),
         logo_file: null,
         logo_preview: null,
       })
@@ -337,6 +343,7 @@ export default function BrandingPage() {
       brand_dark_mode: company.brand_dark_mode ?? true,
       cta_label: company.cta_label ?? 'Send me a WhatsApp',
       cta_url: company.cta_url ?? '',
+      logo_size: toLogoSize(company.logo_size),
       logo_file: null,
       logo_preview: null,
     })
@@ -448,6 +455,7 @@ export default function BrandingPage() {
       cta_label: values.cta_label,
       cta_url: values.cta_url,
       logo_url: finalLogoUrl,
+      logo_size: values.logo_size,
     }
 
     const result = await updateCompanyBranding(payload)
@@ -489,6 +497,7 @@ export default function BrandingPage() {
         brand_dark_mode: values.brand_dark_mode,
         cta_label: values.cta_label || 'Send me a WhatsApp',
         cta_url: values.cta_url || null,
+        logo_size: values.logo_size,
       }
     : null
 
@@ -726,6 +735,44 @@ export default function BrandingPage() {
                 onChange={handleLogoInputChange}
               />
             </div>
+
+            {/*
+              Only offered once a logo exists — a size control with nothing to
+              size is noise. Every option is checked against both hero states,
+              so none of them can break the layout.
+            */}
+            {previewLogoUrl && (
+              <div className="mt-6 border-t border-slate-200/70 pt-5">
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                  Logo Size
+                </label>
+                <p className="mb-3 text-[11px] text-slate-400">
+                  A wide wordmark and a square icon need different scales. Watch
+                  the preview.
+                </p>
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                  {LOGO_SIZE_VALUES.map(size => {
+                    const active = values.logo_size === size
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => setField('logo_size', size)}
+                        aria-pressed={active}
+                        className={[
+                          'rounded-lg px-5 py-1.5 text-sm font-semibold transition-colors',
+                          active
+                            ? 'bg-white text-teal-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700',
+                        ].join(' ')}
+                      >
+                        {LOGO_SIZES[size].label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Brand Colours */}

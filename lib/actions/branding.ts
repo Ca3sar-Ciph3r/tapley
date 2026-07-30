@@ -14,6 +14,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getImpersonationState } from '@/lib/actions/admin'
+import { toLogoSize, type LogoSize } from '@/lib/constants/logo-size'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +34,7 @@ export type UpdateCompanyBrandingInput = {
   cta_label: string
   cta_url: string
   logo_url: string | null
+  logo_size: LogoSize
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +122,9 @@ export async function updateCompanyBranding(
       cta_label: input.cta_label.trim() || 'Send me a WhatsApp',
       cta_url: input.cta_url.trim() || null,
       logo_url: input.logo_url,
+      // Narrowed rather than trusted: the column carries a check constraint, so
+      // an unexpected value would fail the whole save rather than one field.
+      logo_size: toLogoSize(input.logo_size),
     })
     .eq('id', companyId)
 
