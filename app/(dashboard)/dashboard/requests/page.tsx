@@ -10,11 +10,15 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  CHANGE_REQUEST_TYPES,
   createChangeRequest,
   listChangeRequests,
-  type ChangeRequest,
 } from '@/lib/actions/change-requests'
+// Constants come from the plain module, not the 'use server' one — see the
+// note in lib/constants/change-requests.ts.
+import {
+  CHANGE_REQUEST_TYPES,
+  type ChangeRequest,
+} from '@/lib/constants/change-requests'
 import { getEffectiveCompanyId } from '@/lib/actions/admin'
 import { NoCompanySelected } from '@/components/dashboard/no-company-selected'
 

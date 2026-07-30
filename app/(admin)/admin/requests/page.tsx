@@ -12,11 +12,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  CHANGE_REQUEST_TYPES,
   listOpenRequestsForAllCompanies,
   resolveChangeRequest,
-  type ChangeRequest,
 } from '@/lib/actions/change-requests'
+// Constants come from the plain module, not the 'use server' one — see the
+// note in lib/constants/change-requests.ts.
+import {
+  CHANGE_REQUEST_TYPES,
+  type ChangeRequest,
+} from '@/lib/constants/change-requests'
 
 const TYPE_LABELS = new Map<string, string>(
   CHANGE_REQUEST_TYPES.map(t => [t.value, t.label])

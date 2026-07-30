@@ -15,31 +15,16 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getEffectiveCompanyId } from '@/lib/actions/admin'
+import {
+  CHANGE_REQUEST_TYPES,
+  type ChangeRequest,
+  type ChangeRequestType,
+} from '@/lib/constants/change-requests'
 
-export const CHANGE_REQUEST_TYPES = [
-  { value: 'replace_staff', label: 'Someone has left — replace them on a card' },
-  { value: 'new_staff', label: 'Add a new staff member' },
-  { value: 'edit_details', label: 'Correct someone’s details' },
-  { value: 'branding', label: 'Change our branding' },
-  { value: 'order_cards', label: 'Order more cards' },
-  { value: 'other', label: 'Something else' },
-] as const
-
-export type ChangeRequestType = (typeof CHANGE_REQUEST_TYPES)[number]['value']
-
+// This file is 'use server' and may therefore only *export* async functions.
+// The options and the row shape live in lib/constants/change-requests.ts so
+// client components can import them without getting `undefined` at runtime.
 const VALID_TYPES = new Set(CHANGE_REQUEST_TYPES.map(t => t.value))
-
-export interface ChangeRequest {
-  id: string
-  company_id: string
-  staff_card_id: string | null
-  type: string
-  details: string
-  status: string
-  resolution_note: string | null
-  resolved_at: string | null
-  created_at: string
-}
 
 const MAX_DETAILS = 2000
 
