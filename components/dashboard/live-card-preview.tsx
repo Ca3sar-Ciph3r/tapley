@@ -17,7 +17,7 @@
 import { CardHero } from '@/components/card/card-hero'
 import { resolveCardTheme } from '@/lib/utils/card-theme'
 import type { SocialLinks } from '@/lib/utils/social-links'
-import type { LogoSize } from '@/lib/constants/logo-size'
+import type { LogoPosition, LogoSize } from '@/lib/constants/logo-size'
 
 // A 390x780 frame is an iPhone 14/15 viewport, the most common device that
 // taps these cards. SCALE fits that into the dashboard's preview column.
@@ -58,6 +58,9 @@ export interface LiveCardPreviewProps {
   photoSrc: string | null
   /** Staff-level override of the company location. */
   location?: string
+  /** Staff-level logo overrides. null/undefined inherits the company setting. */
+  logoPosition?: LogoPosition
+  logoSize?: LogoSize | null
   company: CompanyPreview
 }
 
@@ -84,6 +87,8 @@ export function LiveCardPreview({
   company,
   photoSrc,
   location,
+  logoPosition = 'left',
+  logoSize,
 }: LiveCardPreviewProps) {
   const theme = resolveCardTheme({
     primaryColor: company.brand_primary_color,
@@ -132,7 +137,8 @@ export function LiveCardPreview({
             location={resolvedLocation}
             photoUrl={photoSrc}
             logoUrl={company.logo_url}
-            logoSize={company.logo_size ?? 'm'}
+            logoSize={logoSize ?? company.logo_size ?? 'm'}
+            logoPosition={logoPosition}
             theme={theme}
             // vh would resolve against the browser window, not this fixed frame.
             heightClassName={HERO_HEIGHT_CLASS}

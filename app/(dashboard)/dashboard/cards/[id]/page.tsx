@@ -32,6 +32,8 @@ import {
 import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
 import { LiveCardPreview } from '@/components/dashboard/live-card-preview'
 import { PhotoCropper } from '@/components/dashboard/photo-cropper'
+import { LogoPlacementFields } from '@/components/dashboard/logo-placement-fields'
+import { toLogoPosition, type LogoPosition, type LogoSize } from '@/lib/constants/logo-size'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,6 +62,8 @@ type FormValues = {
   // cta_label / cta_url intentionally excluded: set at company level via /dashboard/branding
   wa_notify_enabled: boolean
   show_optin_form: boolean
+  logo_position: LogoPosition
+  logo_size: LogoSize | null
   photo_url: string | null
   photo_file: Blob | null   // the cropped 4:5 blob, ready to upload
   photo_preview: string | null
@@ -84,6 +88,7 @@ type CardMeta = {
     brand_secondary_color: string
     brand_dark_mode: boolean
     card_template: string
+    logo_size: LogoSize
     cta_label: string
     cta_url: string | null
     website: string | null
@@ -178,11 +183,11 @@ export default function EditCardPage({
         phone, email, whatsapp_number,
         show_phone, show_email, social_links,
         cta_label, cta_url,
-        wa_notify_enabled, show_optin_form, photo_url,
+        wa_notify_enabled, show_optin_form, photo_url, logo_position, logo_size,
         nfc_cards ( id, slug, order_status ),
         companies (
           name, logo_url,
-          brand_primary_color, brand_secondary_color, brand_dark_mode, card_template,
+          brand_primary_color, brand_secondary_color, brand_dark_mode, card_template, logo_size,
           cta_label, cta_url, website, tagline
         )
       `)
@@ -239,6 +244,9 @@ export default function EditCardPage({
       },
       wa_notify_enabled: card.wa_notify_enabled,
       show_optin_form: card.show_optin_form,
+      logo_position: toLogoPosition(card.logo_position),
+      // null stays null: it means inherit the company size, not medium.
+      logo_size: (card.logo_size as LogoSize | null) ?? null,
       photo_url: card.photo_url,
       photo_file: null,
       photo_preview: null,
@@ -424,6 +432,8 @@ export default function EditCardPage({
       // cta_label / cta_url deliberately omitted — set at company level, preserved in DB
       wa_notify_enabled: values.wa_notify_enabled,
       show_optin_form: values.show_optin_form,
+      logo_position: values.logo_position,
+      logo_size: values.logo_size,
       ...(photoChanged ? { photo_url: finalPhotoUrl } : {}),
     }
 
@@ -796,7 +806,19 @@ export default function EditCardPage({
             />
           </SectionPanel>
 
-          {/* ── Section 6: NFC Card ── */}
+          {/* ── Section 6: Card Design ── */}
+          <SectionPanel title="Card Design" icon="branding_watermark">
+            <LogoPlacementFields
+              hasLogo={Boolean(meta.company.logo_url)}
+              hasPhoto={Boolean(photoDisplay)}
+              position={values.logo_position}
+              onPositionChange={v => set('logo_position', v)}
+              size={values.logo_size}
+              onSizeChange={v => set('logo_size', v)}
+            />
+          </SectionPanel>
+
+          {/* ── Section 7: NFC Card ── */}
           <SectionPanel title="NFC Card" icon="nfc">
             {meta.nfc_card_id && meta.nfc_slug ? (
               <div className="flex items-center justify-between flex-wrap gap-3">
@@ -931,6 +953,8 @@ export default function EditCardPage({
             ctaLabel=""
             ctaUrl=""
             photoSrc={photoDisplay}
+            logoPosition={values.logo_position}
+            logoSize={values.logo_size}
             company={meta.company}
           />
         </div>

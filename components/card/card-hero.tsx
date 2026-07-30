@@ -13,7 +13,11 @@
 import Image from 'next/image'
 import type { CardTheme } from '@/lib/utils/card-theme'
 import { getInitials } from '@/lib/utils/card-theme'
-import { LOGO_SIZES, type LogoSize } from '@/lib/constants/logo-size'
+import {
+  LOGO_SIZES,
+  type LogoPosition,
+  type LogoSize,
+} from '@/lib/constants/logo-size'
 
 // Logos are transparent PNGs sitting straight on a photograph, so nothing
 // guarantees contrast behind them. A drop-shadow follows the alpha channel and
@@ -37,6 +41,11 @@ interface CardHeroProps {
   logoUrl?: string | null
   /** Company's chosen logo scale. Defaults to medium. */
   logoSize?: LogoSize
+  /**
+   * Which corner the logo sits in over a photo. Ignored when there is no
+   * photo — the logo then fills the centre in place of the initials.
+   */
+  logoPosition?: LogoPosition
   theme: CardTheme
   /**
    * Skip the Next image optimiser. Needed by the dashboard's live preview,
@@ -61,6 +70,7 @@ export function CardHero({
   photoUrl,
   logoUrl = null,
   logoSize = 'm',
+  logoPosition = 'left',
   theme,
   unoptimizedImage = false,
   heightClassName = 'h-[56vh] min-h-[300px] sm:h-[52vh] lg:h-[56vh]',
@@ -126,18 +136,31 @@ export function CardHero({
       */}
       {photoUrl && logoUrl && (
         <div
-          className="absolute left-[18px] top-[18px]"
+          // The box is anchored per position and the image aligned to match, so
+          // a wide wordmark grows away from its edge rather than off the card.
+          className="absolute top-[18px]"
           style={{
             height: logo.overlayHeight,
             width: logo.overlayMaxWidth,
             filter: LOGO_LIFT,
+            ...(logoPosition === 'left' ? { left: 18 } : {}),
+            ...(logoPosition === 'right' ? { right: 18 } : {}),
+            ...(logoPosition === 'center'
+              ? { left: '50%', transform: 'translateX(-50%)' }
+              : {}),
           }}
         >
           <Image
             src={logoUrl}
             alt={companyName ?? 'Company logo'}
             fill
-            className="object-contain object-left-top"
+            className={
+              logoPosition === 'left'
+                ? 'object-contain object-left-top'
+                : logoPosition === 'right'
+                  ? 'object-contain object-right-top'
+                  : 'object-contain object-top'
+            }
             unoptimized={unoptimizedImage}
             sizes="260px"
           />

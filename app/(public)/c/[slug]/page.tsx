@@ -33,7 +33,7 @@ import { buildWaLink, getFirstName, isValidPhoneNumber } from '@/lib/utils/whats
 import { parseSocialLinks, hasSocialLinks } from '@/lib/utils/social-links'
 import { sanitiseExternalUrl } from '@/lib/utils/safe-url'
 import { resolveCardTheme, type CardTheme } from '@/lib/utils/card-theme'
-import { toLogoSize } from '@/lib/constants/logo-size'
+import { resolveLogoSize, toLogoPosition } from '@/lib/constants/logo-size'
 import { ViewEventTracker } from '@/components/card/view-event-tracker'
 import { CardActions } from '@/components/card/card-actions'
 import { CardHero } from '@/components/card/card-hero'
@@ -275,7 +275,8 @@ export default async function CardPage({ params }: PageProps) {
           location={location}
           photoUrl={staffCard.photo_url}
           logoUrl={company?.logo_url ?? null}
-          logoSize={toLogoSize(company?.logo_size)}
+          logoSize={resolveLogoSize(staffCard.logo_size, company?.logo_size)}
+          logoPosition={toLogoPosition(staffCard.logo_position)}
           theme={theme}
         />
 

@@ -815,6 +815,8 @@ export type Database = {
           is_active: boolean
           job_title: string
           location: string | null
+          logo_position: string | null
+          logo_size: string | null
           nfc_card_id: string | null
           phone: string | null
           photo_url: string | null
@@ -840,6 +842,8 @@ export type Database = {
           is_active?: boolean
           job_title: string
           location?: string | null
+          logo_position?: string | null
+          logo_size?: string | null
           nfc_card_id?: string | null
           phone?: string | null
           photo_url?: string | null
@@ -865,6 +869,8 @@ export type Database = {
           is_active?: boolean
           job_title?: string
           location?: string | null
+          logo_position?: string | null
+          logo_size?: string | null
           nfc_card_id?: string | null
           phone?: string | null
           photo_url?: string | null

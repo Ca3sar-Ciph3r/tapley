@@ -59,3 +59,42 @@ export function toLogoSize(raw: unknown): LogoSize {
     ? (raw as LogoSize)
     : DEFAULT_LOGO_SIZE
 }
+
+// ---------------------------------------------------------------------------
+// Position
+//
+// Only meaningful when the card has a photo. With no photo the logo replaces
+// the initials in the centre of the hero — there is no corner to move it to.
+// ---------------------------------------------------------------------------
+
+export const LOGO_POSITION_VALUES = ['left', 'center', 'right'] as const
+
+export type LogoPosition = (typeof LOGO_POSITION_VALUES)[number]
+
+export const DEFAULT_LOGO_POSITION: LogoPosition = 'left'
+
+export const LOGO_POSITION_LABELS: Record<LogoPosition, string> = {
+  left: 'Left',
+  center: 'Centre',
+  right: 'Right',
+}
+
+export function toLogoPosition(raw: unknown): LogoPosition {
+  return LOGO_POSITION_VALUES.includes(raw as LogoPosition)
+    ? (raw as LogoPosition)
+    : DEFAULT_LOGO_POSITION
+}
+
+/**
+ * Resolves a staff card's own setting against the company default.
+ *
+ * NULL on the card means inherit, so a company that later changes its default
+ * logo size sees it flow through to every card that never overrode it.
+ */
+export function resolveLogoSize(
+  cardValue: unknown,
+  companyValue: unknown
+): LogoSize {
+  if (LOGO_SIZE_VALUES.includes(cardValue as LogoSize)) return cardValue as LogoSize
+  return toLogoSize(companyValue)
+}

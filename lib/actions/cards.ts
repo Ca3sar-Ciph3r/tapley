@@ -16,6 +16,12 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { normalisePhoneNumber, isValidPhoneNumber } from '@/lib/utils/whatsapp'
 import { sanitiseExternalUrl, sanitiseUrlMap } from '@/lib/utils/safe-url'
+import {
+  LOGO_POSITION_VALUES,
+  LOGO_SIZE_VALUES,
+  type LogoPosition,
+  type LogoSize,
+} from '@/lib/constants/logo-size'
 import { getImpersonationState } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
@@ -447,6 +453,11 @@ export type UpdateStaffCardInput = {
   // null       → user explicitly removed their photo
   // string     → user uploaded a new photo; value is the new public URL
   photo_url?: string | null
+  // Logo placement over this card's photo. null means inherit the company
+  // default rather than "left"/"medium", so a later change to the company
+  // setting still flows through to cards that never overrode it.
+  logo_position?: LogoPosition | null
+  logo_size?: LogoSize | null
 }
 
 // ---------------------------------------------------------------------------
@@ -584,6 +595,22 @@ export async function requestAdditionalCards(
   return {}
 }
 
+/**
+ * Narrows a logo choice for the database, keeping "inherit" distinct from a
+ * concrete value.
+ *
+ * Anything not in the allowed set — including undefined and an empty string
+ * from a form — becomes null, which the card page reads as "use the company
+ * default". Coercing to 'left' or 'm' instead would freeze today's default onto
+ * the row and silently detach the card from future branding changes.
+ */
+function normaliseLogoChoice<T extends string>(
+  value: unknown,
+  allowed: readonly T[]
+): T | null {
+  return allowed.includes(value as T) ? (value as T) : null
+}
+
 export async function updateStaffCard(
   staffCardId: string,
   input: UpdateStaffCardInput
@@ -640,6 +667,24 @@ export async function updateStaffCard(
   // "save other fields" action can never accidentally clear a photo.
   const photoUpdate = 'photo_url' in input ? { photo_url: input.photo_url } : {}
 
+  // Same rule for logo placement, and it matters more here because null is a
+  // meaningful value ("inherit the company setting"), not an absence. A caller
+  // that simply does not manage these fields must leave them alone rather than
+  // reset every card to the company default.
+  const logoUpdate = {
+    ...('logo_position' in input
+      ? {
+          logo_position: normaliseLogoChoice(
+            input.logo_position,
+            LOGO_POSITION_VALUES
+          ),
+        }
+      : {}),
+    ...('logo_size' in input
+      ? { logo_size: normaliseLogoChoice(input.logo_size, LOGO_SIZE_VALUES) }
+      : {}),
+  }
+
   // cta_label / cta_url are only written when present in the input.
   // The admin edit UI no longer exposes these fields — omitting them here
   // preserves any existing per-card overrides already stored in the database.
@@ -668,6 +713,7 @@ export async function updateStaffCard(
       wa_notify_enabled: input.wa_notify_enabled,
       show_optin_form: input.show_optin_form,
       ...photoUpdate,
+      ...logoUpdate,
       updated_at: new Date().toISOString(),
     })
     .eq('id', staffCardId)
