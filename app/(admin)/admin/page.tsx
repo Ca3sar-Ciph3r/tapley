@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { createCompany } from '@/lib/actions/admin'
+import { createCompany, setCompanyArchived } from '@/lib/actions/admin'
 import {
   PRICING_TIERS,
   calculateBilling,
@@ -39,6 +39,7 @@ type CompanyRow = {
   max_staff_cards: number
   created_at: string
   self_service: boolean
+  archived_at: string | null
   staffCount: number
   views30d: number
 }
@@ -569,6 +570,8 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [companies, setCompanies] = useState<CompanyRow[]>([])
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivingId, setArchivingId] = useState<string | null>(null)
   const [totalCards, setTotalCards] = useState(0)
   const [totalViews, setTotalViews] = useState(0)
   const [search, setSearch] = useState('')
@@ -589,7 +592,7 @@ export default function SuperAdminPage() {
     const [companiesResult, cardsResult, viewsResult, views30dResult] = await Promise.all([
       supabase
         .from('companies')
-        .select('id, name, slug, subscription_plan, subscription_status, max_staff_cards, created_at, self_service')
+        .select('id, name, slug, subscription_plan, subscription_status, max_staff_cards, created_at, self_service, archived_at')
         .order('created_at', { ascending: false }),
       supabase
         .from('staff_cards')
@@ -656,10 +659,38 @@ export default function SuperAdminPage() {
     window.location.href = `/admin/${companyId}`
   }
 
-  const filtered = companies.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.slug.toLowerCase().includes(search.toLowerCase())
-  )
+  const archivedCount = companies.filter(c => c.archived_at).length
+
+  const filtered = companies
+    // Archived companies are hidden by default. Nothing is deleted — this is
+    // housekeeping so pilots stop cluttering the list you work from.
+    .filter(c => showArchived || !c.archived_at)
+    .filter(c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.slug.toLowerCase().includes(search.toLowerCase())
+    )
+
+  async function handleToggleArchive(company: CompanyRow) {
+    const archiving = !company.archived_at
+    if (
+      archiving &&
+      !confirm(
+        `Archive ${company.name}?\n\nIt will be hidden from this list. Nothing is deleted — staff cards, NFC cards, views and captured contacts are all kept, and its public card pages keep working. You can restore it at any time.`
+      )
+    ) {
+      return
+    }
+
+    setArchivingId(company.id)
+    const result = await setCompanyArchived(company.id, archiving)
+    setArchivingId(null)
+
+    if (result.error) {
+      alert(`Could not ${archiving ? 'archive' : 'restore'}: ${result.error}`)
+      return
+    }
+    await loadData()
+  }
 
   if (loading) {
     return (
@@ -755,6 +786,19 @@ export default function SuperAdminPage() {
               className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent bg-white w-56"
             />
           </div>
+
+          {archivedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowArchived(v => !v)}
+              className="ml-3 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">
+                {showArchived ? 'visibility_off' : 'inventory_2'}
+              </span>
+              {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+            </button>
+          )}
         </div>
 
         {filtered.length === 0 ? (
@@ -790,7 +834,12 @@ export default function SuperAdminPage() {
             </thead>
             <tbody>
               {filtered.map(company => (
-                <CompanyTableRow key={company.id} company={company} />
+                <CompanyTableRow
+                  key={company.id}
+                  company={company}
+                  busy={archivingId === company.id}
+                  onToggleArchive={() => handleToggleArchive(company)}
+                />
               ))}
             </tbody>
           </table>
@@ -804,7 +853,16 @@ export default function SuperAdminPage() {
 // CompanyTableRow
 // ---------------------------------------------------------------------------
 
-function CompanyTableRow({ company }: { company: CompanyRow }) {
+function CompanyTableRow({
+  company,
+  busy,
+  onToggleArchive,
+}: {
+  company: CompanyRow
+  busy: boolean
+  onToggleArchive: () => void
+}) {
+  const isArchived = Boolean(company.archived_at)
   const joined = new Date(company.created_at).toLocaleDateString('en-ZA', {
     day: '2-digit',
     month: '2-digit',

@@ -25,6 +25,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { updateOwnStaffCard, type UpdateOwnStaffCardInput } from '@/lib/actions/staff-self-edit'
 import { LiveCardPreview } from '@/components/dashboard/live-card-preview'
+import { PhotoCropper } from '@/components/dashboard/photo-cropper'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,7 +95,7 @@ type EditForm = {
   wa_notify_enabled: boolean
   social_links: SocialLinks
   photo_url: string | null
-  photo_file: File | null
+  photo_file: Blob | null
   photo_preview: string | null
 }
 
@@ -138,36 +139,6 @@ const SOURCE_COLOURS: Record<string, string> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Resize a File to max 800×800px via Canvas API. Returns a JPEG Blob.
-async function resizePhoto(file: File): Promise<Blob> {
-  const MAX = 800
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const objectUrl = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      let { width: w, height: h } = img
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round((h * MAX) / w); w = MAX }
-        else { w = Math.round((w * MAX) / h); h = MAX }
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('Canvas 2D context unavailable')); return }
-      ctx.drawImage(img, 0, 0, w, h)
-      canvas.toBlob(
-        blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')),
-        'image/jpeg',
-        0.85,
-      )
-    }
-    img.onerror = () => reject(new Error('Image load failed'))
-    img.src = objectUrl
-  })
-}
-
 function formatTimeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diffMs / 60_000)
@@ -196,6 +167,7 @@ export default function MyCardPage() {
   const [uploading, setUploading] = useState(false)
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [cropFile, setCropFile] = useState<File | null>(null)
 
   // Analytics state
   const [period, setPeriod] = useState<AnalyticsPeriod>(30)
@@ -364,7 +336,7 @@ export default function MyCardPage() {
     } : prev)
   }
 
-  async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !card || !form) return
 
@@ -378,16 +350,27 @@ export default function MyCardPage() {
       return
     }
 
+    // Hand off to the cropper rather than uploading the raw file. resizePhoto
+    // only scaled to fit and kept whatever aspect was uploaded, so a landscape
+    // photo got cropped through the subject's face with nobody asked.
     setSaveError(null)
+    setCropFile(file)
+  }
+
+  function handleCropCancel() {
+    setCropFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleCropConfirm(resized: Blob, previewUrl: string) {
+    if (!card || !form) return
+
+    setCropFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
     setUploading(true)
 
     try {
-      // 1. Client-side resize to max 800×800px
-      const resized = await resizePhoto(file)
-
-      // 2. Show preview immediately
-      const previewUrl = URL.createObjectURL(resized)
-      setForm(prev => prev ? { ...prev, photo_file: file, photo_preview: previewUrl } : prev)
+      setForm(prev => prev ? { ...prev, photo_file: null, photo_preview: previewUrl } : prev)
 
       // 3. Upload to Supabase Storage.
       // The filename includes a timestamp so each upload gets a unique URL.
@@ -540,6 +523,13 @@ export default function MyCardPage() {
 
   return (
     <div className="p-8 max-w-[1200px]">
+      {cropFile && (
+        <PhotoCropper
+          file={cropFile}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
+      )}
 
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">

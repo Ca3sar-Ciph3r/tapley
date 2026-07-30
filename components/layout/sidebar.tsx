@@ -35,14 +35,22 @@ const ADMIN_NAV: NavItem[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/dashboard', exact: true },
   { label: 'Team Cards', icon: 'groups', href: '/dashboard/cards' },
   { label: 'Analytics', icon: 'monitoring', href: '/dashboard/analytics' },
+  { label: 'Leaderboard', icon: 'trophy', href: '/dashboard/leaderboard' },
   { label: 'Contacts', icon: 'contacts', href: '/dashboard/crm' },
+  { label: 'Requests', icon: 'support_agent', href: '/dashboard/requests' },
   { label: 'Refer & Earn', icon: 'card_giftcard', href: '/dashboard/refer' },
   { label: 'Branding', icon: 'palette', href: '/dashboard/branding' },
   { label: 'Billing', icon: 'receipt_long', href: '/dashboard/billing' },
 ]
 
+// Staff get the leaderboard because it is the part that makes them want to hand
+// their card out, and Requests because they are the most likely to notice
+// something wrong with their own card that they cannot fix themselves (a wrong
+// job title or misspelled name are admin-only fields).
 const STAFF_NAV: NavItem[] = [
   { label: 'My Card', icon: 'id_card', href: '/dashboard/my-card' },
+  { label: 'Leaderboard', icon: 'trophy', href: '/dashboard/leaderboard' },
+  { label: 'Requests', icon: 'support_agent', href: '/dashboard/requests' },
 ]
 
 export default function DashboardSidebar({

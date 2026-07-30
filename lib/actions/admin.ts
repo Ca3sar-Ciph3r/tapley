@@ -694,6 +694,45 @@ export async function updateOnboardingChecklist(
 // This is irreversible. The UI must show a confirmation prompt before calling.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// setCompanyArchived
+//
+// Hides a pilot or dead company from the super admin list and the company
+// switcher, without deleting anything.
+//
+// This exists as the safe alternative to deleteCompany, which hard-deletes
+// nfc_cards and cascades card_views and contacts — destroying consented lead
+// data and the entire view history, and contradicting two CLAUDE.md rules.
+//
+// Public card pages are deliberately unaffected: a physical card already in
+// someone's wallet must keep working regardless of admin-list housekeeping.
+// Fully reversible — pass archived = false to restore.
+// ---------------------------------------------------------------------------
+
+export async function setCompanyArchived(
+  companyId: string,
+  archived: boolean
+): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorised' }
+
+  const { data: adminRecord } = await supabase
+    .from('company_admins').select('role').eq('user_id', user.id)
+    .eq('role', 'super_admin').limit(1).maybeSingle()
+  if (adminRecord?.role !== 'super_admin') {
+    return { error: 'Access denied — super admin only.' }
+  }
+
+  const { error } = await supabaseAdmin
+    .from('companies')
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', companyId)
+
+  if (error) return { error: error.message }
+  return {}
+}
+
 export async function deleteCompany(
   companyId: string,
 ): Promise<{ error?: string }> {

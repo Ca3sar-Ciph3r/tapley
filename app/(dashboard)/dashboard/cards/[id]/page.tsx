@@ -31,6 +31,7 @@ import {
 } from '@/lib/actions/cards'
 import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
 import { LiveCardPreview } from '@/components/dashboard/live-card-preview'
+import { PhotoCropper } from '@/components/dashboard/photo-cropper'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,7 +61,7 @@ type FormValues = {
   wa_notify_enabled: boolean
   show_optin_form: boolean
   photo_url: string | null
-  photo_file: File | null
+  photo_file: Blob | null   // the cropped 4:5 blob, ready to upload
   photo_preview: string | null
 }
 
@@ -122,37 +123,6 @@ function validateForm(v: FormValues): FormErrors {
   return errors
 }
 
-// Resize a File to max 800×800px using the Canvas API, returning a JPEG Blob.
-// Per JOURNEYS.md Journey 4.
-async function resizePhoto(file: File): Promise<Blob> {
-  const MAX = 800
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const objectUrl = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      let { width: w, height: h } = img
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round((h * MAX) / w); w = MAX }
-        else { w = Math.round((w * MAX) / h); h = MAX }
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('Canvas 2D context unavailable')); return }
-      ctx.drawImage(img, 0, 0, w, h)
-      canvas.toBlob(
-        blob => { blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')) },
-        'image/jpeg',
-        0.85
-      )
-    }
-    img.onerror = () => reject(new Error('Image load failed'))
-    img.src = objectUrl
-  })
-}
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -185,6 +155,7 @@ export default function EditCardPage({
 
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [cropFile, setCropFile] = useState<File | null>(null)
 
   // Load card + analytics on mount
   useEffect(() => {
@@ -350,13 +321,27 @@ export default function EditCardPage({
       return
     }
 
-    const preview = URL.createObjectURL(file)
+    // Hand off to the cropper rather than accepting the raw file. resizePhoto
+    // only scaled to fit and kept whatever aspect was uploaded, so a landscape
+    // photo got cropped through the subject's face with nobody asked.
+    setErrors(prev => ({ ...prev, photo: undefined }))
+    setCropFile(file)
+  }
+
+  function handleCropConfirm(blob: Blob, previewUrl: string) {
+    if (values?.photo_preview) URL.revokeObjectURL(values.photo_preview)
     setValues(prev =>
-      prev ? { ...prev, photo_file: file, photo_preview: preview } : prev
+      prev ? { ...prev, photo_file: blob, photo_preview: previewUrl } : prev
     )
     setPhotoChanged(true)
-    setErrors(prev => ({ ...prev, photo: undefined }))
+    setCropFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
     setSaveSuccess(false)
+  }
+
+  function handleCropCancel() {
+    setCropFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   function handleRemovePhoto() {
@@ -396,7 +381,7 @@ export default function EditCardPage({
     // and both caches would keep serving the old image even after revalidatePath.
     if (values.photo_file) {
       try {
-        const blob = await resizePhoto(values.photo_file)
+        const blob = values.photo_file
         const supabase = createClient()
         const storagePath = `${meta.company_id}/${meta.id}/photo_${Date.now()}.jpg`
 
@@ -522,6 +507,14 @@ export default function EditCardPage({
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {cropFile && (
+        <PhotoCropper
+          file={cropFile}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
+      )}
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">

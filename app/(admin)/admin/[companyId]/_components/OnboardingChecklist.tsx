@@ -2,54 +2,42 @@
 
 // app/(admin)/admin/[companyId]/_components/OnboardingChecklist.tsx
 //
-// 8-item onboarding checklist Luke can tick manually.
-// Each checkbox fires updateOnboardingChecklist immediately (optimistic update).
-// Checklist state is stored as JSONB in companies.onboarding_checklist.
+// Onboarding status for a company.
+//
+// Six of the eight steps are DERIVED from the database and cannot be ticked by
+// hand. This used to be eight manual checkboxes, and every one of the five live
+// companies had drifted from reality in both directions — Nanovault was marked
+// fully onboarded and handed over while having no staff, no admin, an
+// unassigned card and zero views. A checklist you consult to decide whether a
+// client is ready to hand over is worse than useless when it lies.
+//
+// The two steps with no database signal — someone physically tapping a card on
+// a phone, and the handover conversation — stay manual, but are shown next to
+// the evidence needed to judge them.
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { updateOnboardingChecklist, type OnboardingChecklist } from '@/lib/actions/admin'
+import {
+  getOnboardingStatus,
+  type DerivedStepKey,
+  type ManualStepKey,
+  type OnboardingStatus,
+} from '@/lib/actions/onboarding'
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
+const DERIVED_LABELS: Record<DerivedStepKey, string> = {
+  company_created: 'Company created',
+  admin_invited: 'Admin invited',
+  branding_set: 'Branding set',
+  staff_imported: 'Staff imported',
+  nfc_cards_generated: 'NFC cards generated',
+  cards_assigned: 'Cards assigned',
+}
 
-type ChecklistKey = keyof OnboardingChecklist
-
-const CHECKLIST_ITEMS: { key: ChecklistKey; label: string; description: string }[] = [
-  {
-    key: 'company_created',
-    label: 'Company created',
-    description: 'Company record and slug set up in Tapley Connect',
-  },
-  {
-    key: 'admin_invited',
-    label: 'Admin invited',
-    description: 'Company Admin has received invite email and set password',
-  },
-  {
-    key: 'branding_set',
-    label: 'Branding set',
-    description: 'Logo uploaded, brand colours and card template configured',
-  },
-  {
-    key: 'staff_imported',
-    label: 'Staff imported',
-    description: 'All staff cards created (CSV import or manually)',
-  },
-  {
-    key: 'nfc_cards_generated',
-    label: 'NFC cards generated',
-    description: 'Physical NFC card slugs generated and sent for printing',
-  },
-  {
-    key: 'cards_assigned',
-    label: 'Cards assigned',
-    description: 'Every staff card has an NFC card assigned',
-  },
+const MANUAL_ITEMS: { key: ManualStepKey; label: string; description: string }[] = [
   {
     key: 'card_page_tested',
     label: 'Card page tested',
-    description: 'At least one card page tapped and verified on mobile',
+    description: 'Tapped and checked on a real iPhone and a budget Android',
   },
   {
     key: 'handover_done',
@@ -58,114 +46,145 @@ const CHECKLIST_ITEMS: { key: ChecklistKey; label: string; description: string }
   },
 ]
 
-const DEFAULT_CHECKLIST: OnboardingChecklist = {
-  company_created: false,
-  admin_invited: false,
-  branding_set: false,
-  staff_imported: false,
-  nfc_cards_generated: false,
-  cards_assigned: false,
-  card_page_tested: false,
-  handover_done: false,
-}
-
-function parseChecklist(raw: Record<string, boolean> | null): OnboardingChecklist {
-  if (!raw) return { ...DEFAULT_CHECKLIST }
-  return {
-    company_created: raw.company_created ?? false,
-    admin_invited: raw.admin_invited ?? false,
-    branding_set: raw.branding_set ?? false,
-    staff_imported: raw.staff_imported ?? false,
-    nfc_cards_generated: raw.nfc_cards_generated ?? false,
-    cards_assigned: raw.cards_assigned ?? false,
-    card_page_tested: raw.card_page_tested ?? false,
-    handover_done: raw.handover_done ?? false,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 type Props = {
   companyId: string
   checklist: Record<string, boolean> | null
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export function OnboardingChecklist({ companyId, checklist: initialChecklist }: Props) {
-  const [state, setState] = useState<OnboardingChecklist>(parseChecklist(initialChecklist))
-  const [savingKey, setSavingKey] = useState<ChecklistKey | null>(null)
+  const [status, setStatus] = useState<OnboardingStatus | null>(null)
+  const [manual, setManual] = useState<Record<ManualStepKey, boolean>>({
+    card_page_tested: initialChecklist?.card_page_tested ?? false,
+    handover_done: initialChecklist?.handover_done ?? false,
+  })
+  const [savingKey, setSavingKey] = useState<ManualStepKey | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const completedCount = Object.values(state).filter(Boolean).length
-  const totalCount = CHECKLIST_ITEMS.length
-  const allDone = completedCount === totalCount
+  const load = useCallback(async () => {
+    const result = await getOnboardingStatus(companyId)
+    setStatus(result)
+    if (result.error) setError(result.error)
+  }, [companyId])
 
-  async function handleToggle(key: ChecklistKey) {
-    const updated: OnboardingChecklist = { ...state, [key]: !state[key] }
-    setState(updated)  // optimistic
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function handleToggle(key: ManualStepKey) {
+    const next = { ...manual, [key]: !manual[key] }
+    setManual(next)
     setSavingKey(key)
     setError(null)
 
-    const result = await updateOnboardingChecklist(companyId, updated)
+    // Preserve any derived keys already stored so nothing is silently dropped.
+    const payload = {
+      ...(initialChecklist ?? {}),
+      ...next,
+    } as OnboardingChecklist
 
+    const result = await updateOnboardingChecklist(companyId, payload)
     setSavingKey(null)
     if (result.error) {
-      // Roll back
-      setState(prev => ({ ...prev, [key]: !prev[key] }))
+      setManual(prev => ({ ...prev, [key]: !prev[key] }))
       setError(result.error)
     }
   }
 
+  const derived = status?.derived ?? []
+  const derivedDone = derived.filter(d => d.done).length
+  const manualDone = Object.values(manual).filter(Boolean).length
+  const completed = derivedDone + manualDone
+  const total = derived.length + MANUAL_ITEMS.length
+  const allDone = total > 0 && completed === total
+
+  const evidence = status?.evidence
+
   return (
     <div className="glass-panel rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="font-jakarta text-base font-bold text-slate-900">Onboarding Status</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {completedCount} of {totalCount} steps complete
+          <p className="mt-0.5 text-xs text-slate-400">
+            {status ? `${completed} of ${total} steps complete` : 'Checking…'}
           </p>
         </div>
-        {allDone ? (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 uppercase tracking-wide">
-            <span className="material-symbols-outlined text-[14px] leading-none">check_circle</span>
-            Complete
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 uppercase tracking-wide">
-            <span className="material-symbols-outlined text-[14px] leading-none">pending</span>
-            In Progress
-          </span>
+        {status && (
+          allDone ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-emerald-700">
+              <span className="material-symbols-outlined text-[14px] leading-none">check_circle</span>
+              Complete
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
+              <span className="material-symbols-outlined text-[14px] leading-none">pending</span>
+              In Progress
+            </span>
+          )
         )}
       </div>
 
-      {/* Progress bar */}
-      <div className="w-full h-1.5 bg-slate-100 rounded-full mb-6">
+      <div className="mb-6 h-1.5 w-full rounded-full bg-slate-100">
         <div
-          className="h-1.5 bg-emerald-500 rounded-full transition-all duration-300"
-          style={{ width: `${(completedCount / totalCount) * 100}%` }}
+          className="h-1.5 rounded-full bg-emerald-500 transition-all duration-300"
+          style={{ width: total > 0 ? `${(completed / total) * 100}%` : '0%' }}
         />
       </div>
 
-      {/* Checklist items */}
+      {/* Derived — read from the database, not tickable */}
       <div className="space-y-1">
-        {CHECKLIST_ITEMS.map(item => {
-          const checked = state[item.key]
+        {derived.map(step => (
+          <div
+            key={step.key}
+            className={`flex items-center gap-4 rounded-xl px-4 py-3 ${
+              step.done ? 'bg-emerald-50/60' : 'bg-slate-50/60'
+            }`}
+          >
+            <div
+              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 ${
+                step.done ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'
+              }`}
+            >
+              {step.done && (
+                <span className="material-symbols-outlined text-[12px] leading-none text-white">
+                  check
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p
+                className={`text-sm font-semibold leading-tight ${
+                  step.done ? 'text-emerald-800' : 'text-slate-800'
+                }`}
+              >
+                {DERIVED_LABELS[step.key]}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">{step.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {derived.length > 0 && (
+        <p className="mt-3 px-4 text-[11px] leading-relaxed text-slate-400">
+          The steps above are read from the database and update themselves. The
+          two below have no database signal, so they stay manual.
+        </p>
+      )}
+
+      {/* Manual — real-world events */}
+      <div className="mt-3 space-y-1">
+        {MANUAL_ITEMS.map(item => {
+          const checked = manual[item.key]
           const isSaving = savingKey === item.key
+          const isTestStep = item.key === 'card_page_tested'
 
           return (
             <label
               key={item.key}
-              className={`flex items-center gap-4 px-4 py-3 rounded-xl cursor-pointer transition-colors select-none ${
+              className={`flex cursor-pointer select-none items-center gap-4 rounded-xl px-4 py-3 transition-colors ${
                 checked ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'hover:bg-slate-50'
               }`}
             >
-              {/* Checkbox */}
               <div className="relative flex-shrink-0">
                 <input
                   type="checkbox"
@@ -175,30 +194,43 @@ export function OnboardingChecklist({ companyId, checklist: initialChecklist }: 
                   className="sr-only"
                 />
                 <div
-                  className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-                    checked
-                      ? 'bg-emerald-500 border-emerald-500'
-                      : 'bg-white border-slate-300'
+                  className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${
+                    checked ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'
                   } ${isSaving ? 'opacity-50' : ''}`}
                 >
                   {isSaving ? (
-                    <span className="material-symbols-outlined text-[12px] text-white animate-spin leading-none">
+                    <span className="material-symbols-outlined animate-spin text-[12px] leading-none text-white">
                       progress_activity
                     </span>
                   ) : checked ? (
-                    <span className="material-symbols-outlined text-[12px] text-white leading-none">
+                    <span className="material-symbols-outlined text-[12px] leading-none text-white">
                       check
                     </span>
                   ) : null}
                 </div>
               </div>
 
-              {/* Label + description */}
               <div className="min-w-0">
-                <p className={`text-sm font-semibold leading-tight ${checked ? 'text-emerald-800' : 'text-slate-800'}`}>
+                <p
+                  className={`text-sm font-semibold leading-tight ${
+                    checked ? 'text-emerald-800' : 'text-slate-800'
+                  }`}
+                >
                   {item.label}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">{item.description}</p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {item.description}
+                  {isTestStep && evidence && (
+                    <>
+                      {' · '}
+                      <span className="text-slate-500">
+                        {evidence.totalViews} view
+                        {evidence.totalViews === 1 ? '' : 's'} so far,{' '}
+                        {evidence.nfcSourcedViews} from an actual NFC tap
+                      </span>
+                    </>
+                  )}
+                </p>
               </div>
             </label>
           )
@@ -206,7 +238,7 @@ export function OnboardingChecklist({ companyId, checklist: initialChecklist }: 
       </div>
 
       {error && (
-        <p className="mt-4 text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>
+        <p className="mt-4 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
       )}
     </div>
   )
