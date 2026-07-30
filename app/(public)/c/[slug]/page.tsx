@@ -272,6 +272,7 @@ export default async function CardPage({ params }: PageProps) {
           companyName={company?.name ?? null}
           location={location}
           photoUrl={staffCard.photo_url}
+          logoUrl={company?.logo_url ?? null}
           theme={theme}
         />
 

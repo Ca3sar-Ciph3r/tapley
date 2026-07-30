@@ -129,6 +129,7 @@ export function LiveCardPreview({
             companyName={company.name}
             location={resolvedLocation}
             photoUrl={photoSrc}
+            logoUrl={company.logo_url}
             theme={theme}
             // vh would resolve against the browser window, not this fixed frame.
             heightClassName={HERO_HEIGHT_CLASS}

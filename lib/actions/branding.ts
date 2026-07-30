@@ -13,6 +13,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getImpersonationState } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,18 +54,49 @@ export async function updateCompanyBranding(
 
   if (!user) return { error: 'Unauthorised' }
 
-  // Resolve company_id — RLS on company_admins scopes to the current user
-  const { data: adminRecord } = await supabase
-    .from('company_admins')
-    .select('company_id')
-    .eq('user_id', user.id)
-    .single()
+  // Resolve company_id.
+  //
+  // A super admin's company_admins row has company_id = NULL (migration
+  // 20260415000000), so reading that row alone resolved to null and every save
+  // failed with "No company found for this account" while impersonating — even
+  // though the page had loaded that company's branding perfectly, because the
+  // read path did consult the impersonation cookie and this one did not.
+  //
+  // Same shape as createStaffCard and the bulk importer: trust the cookie only
+  // after confirming the caller really is a super admin, so a forged cookie on
+  // a normal admin's session cannot retarget the write at another company.
+  const impersonation = await getImpersonationState()
 
-  if (!adminRecord?.company_id) {
-    return { error: 'No company found for this account.' }
+  let companyId: string
+
+  if (impersonation?.companyId) {
+    const { data: superAdminRecord } = await supabase
+      .from('company_admins')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'super_admin')
+      .limit(1)
+      .maybeSingle()
+
+    if (!superAdminRecord) return { error: 'Unauthorised' }
+
+    companyId = impersonation.companyId
+  } else {
+    // A user may hold more than one admin row, so take the first with a real
+    // company rather than .single(), which throws outright on multiple rows.
+    const { data: adminRows } = await supabase
+      .from('company_admins')
+      .select('company_id')
+      .eq('user_id', user.id)
+      .not('company_id', 'is', null)
+      .limit(1)
+
+    const resolved = adminRows?.[0]?.company_id
+    if (!resolved) {
+      return { error: 'No company found for this account.' }
+    }
+    companyId = resolved
   }
-
-  const companyId = adminRecord.company_id
 
   // Validate hex colour values
   const hexPattern = /^#[0-9A-Fa-f]{6}$/

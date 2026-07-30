@@ -20,6 +20,11 @@ interface CardHeroProps {
   companyName: string | null
   location: string | null
   photoUrl: string | null
+  /**
+   * Company logo. With no photo it replaces the initials outright; with a
+   * photo it sits in the top-left corner on its own backdrop.
+   */
+  logoUrl?: string | null
   theme: CardTheme
   /**
    * Skip the Next image optimiser. Needed by the dashboard's live preview,
@@ -42,6 +47,7 @@ export function CardHero({
   companyName,
   location,
   photoUrl,
+  logoUrl = null,
   theme,
   unoptimizedImage = false,
   heightClassName = 'h-[56vh] min-h-[300px] sm:h-[52vh] lg:h-[56vh]',
@@ -67,16 +73,54 @@ export function CardHero({
         <div
           className="absolute inset-0 grid place-items-center"
           style={{ background: theme.monogramBg }}
-          aria-hidden="true"
         >
-          <span
-            // Sits in the upper half so a long name wrapping to three lines
-            // does not ride over the initials.
-            className="-translate-y-[12%] text-[clamp(64px,22vw,92px)] font-black leading-none"
-            style={{ color: theme.monogramFg, letterSpacing: '-0.05em' }}
-          >
-            {getInitials(fullName)}
-          </span>
+          {logoUrl ? (
+            // The company's own mark beats generated initials whenever one
+            // exists — it is the thing the recipient actually recognises.
+            <div className="relative -translate-y-[12%] h-[38%] w-[62%]">
+              <Image
+                src={logoUrl}
+                alt={companyName ?? 'Company logo'}
+                fill
+                className="object-contain"
+                priority
+                unoptimized={unoptimizedImage}
+                sizes="(max-width: 640px) 62vw, 280px"
+              />
+            </div>
+          ) : (
+            <span
+              // Sits in the upper half so a long name wrapping to three lines
+              // does not ride over the initials.
+              className="-translate-y-[12%] text-[clamp(64px,22vw,92px)] font-black leading-none"
+              style={{ color: theme.monogramFg, letterSpacing: '-0.05em' }}
+              aria-hidden="true"
+            >
+              {getInitials(fullName)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/*
+        With a photo present the logo cannot sit on the photo unaided — logos
+        are drawn for a known background and most are transparent PNGs, so a
+        dark mark lands on dark hair and disappears. A near-opaque white chip
+        gives it the clean ground it was designed for, and reads consistently
+        whatever the photo behind it happens to be.
+      */}
+      {photoUrl && logoUrl && (
+        <div className="absolute left-[18px] top-[18px] flex h-[46px] max-w-[45%] items-center rounded-xl bg-white/95 px-2.5 py-1.5 shadow-sm ring-1 ring-black/5">
+          <div className="relative h-full w-full min-w-[54px]">
+            <Image
+              src={logoUrl}
+              alt={companyName ?? 'Company logo'}
+              fill
+              className="object-contain object-left"
+              unoptimized={unoptimizedImage}
+              sizes="180px"
+            />
+          </div>
         </div>
       )}
 
