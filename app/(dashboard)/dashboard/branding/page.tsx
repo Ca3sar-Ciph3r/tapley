@@ -17,7 +17,6 @@ import { createClient } from '@/lib/supabase/client'
 import { LiveCardPreview } from '@/components/dashboard/live-card-preview'
 import {
   updateCompanyBranding,
-  type CardTemplate,
   type UpdateCompanyBrandingInput,
 } from '@/lib/actions/branding'
 import { getImpersonationState } from '@/lib/actions/admin'
@@ -35,7 +34,6 @@ type CompanyData = {
   brand_primary_color: string
   brand_secondary_color: string
   brand_dark_mode: boolean
-  card_template: CardTemplate
   cta_label: string
   cta_url: string
 }
@@ -54,23 +52,6 @@ type FormErrors = Partial<Record<
 // Card template options
 // ---------------------------------------------------------------------------
 
-const TEMPLATES: { value: CardTemplate; label: string; description: string }[] = [
-  {
-    value: 'minimal',
-    label: 'Minimal',
-    description: 'Clean white card — focus on content',
-  },
-  {
-    value: 'bold',
-    label: 'Bold',
-    description: 'Full-bleed brand colour header',
-  },
-  {
-    value: 'split',
-    label: 'Split',
-    description: 'Vertical split — photo left, details right',
-  },
-]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -265,7 +246,6 @@ export default function BrandingPage() {
       brand_primary_color: string
       brand_secondary_color: string
       brand_dark_mode: boolean
-      card_template: string
       cta_label: string
       cta_url: string | null
     }
@@ -283,7 +263,7 @@ export default function BrandingPage() {
         companies (
           id, name, tagline, website, logo_url,
           brand_primary_color, brand_secondary_color, brand_dark_mode,
-          card_template, cta_label, cta_url
+          cta_label, cta_url
         )
       `)
       .eq('user_id', user.id)
@@ -315,7 +295,7 @@ export default function BrandingPage() {
       const supabaseAny = supabase as any
       const { data: impersonatedCompany, error: impError } = await supabaseAny
         .from('companies')
-        .select('id, name, tagline, website, logo_url, brand_primary_color, brand_secondary_color, brand_dark_mode, card_template, cta_label, cta_url')
+        .select('id, name, tagline, website, logo_url, brand_primary_color, brand_secondary_color, brand_dark_mode, cta_label, cta_url')
         .eq('id', impersonation.companyId)
         .single()
       if (impError || !impersonatedCompany) {
@@ -334,7 +314,6 @@ export default function BrandingPage() {
         brand_primary_color: impCo.brand_primary_color ?? '#16181D',
         brand_secondary_color: impCo.brand_secondary_color ?? '#F59608',
         brand_dark_mode: impCo.brand_dark_mode ?? true,
-        card_template: (impCo.card_template as CardTemplate) ?? 'minimal',
         cta_label: impCo.cta_label ?? 'Send me a WhatsApp',
         cta_url: impCo.cta_url ?? '',
         logo_file: null,
@@ -356,7 +335,6 @@ export default function BrandingPage() {
       brand_primary_color: company.brand_primary_color ?? '#16181D',
       brand_secondary_color: company.brand_secondary_color ?? '#F59608',
       brand_dark_mode: company.brand_dark_mode ?? true,
-      card_template: (company.card_template as CardTemplate) ?? 'minimal',
       cta_label: company.cta_label ?? 'Send me a WhatsApp',
       cta_url: company.cta_url ?? '',
       logo_file: null,
@@ -467,7 +445,6 @@ export default function BrandingPage() {
       brand_primary_color: values.brand_primary_color,
       brand_secondary_color: values.brand_secondary_color,
       brand_dark_mode: values.brand_dark_mode,
-      card_template: values.card_template,
       cta_label: values.cta_label,
       cta_url: values.cta_url,
       logo_url: finalLogoUrl,
@@ -779,59 +756,6 @@ export default function BrandingPage() {
             </p>
           </section>
 
-          {/* Card Template */}
-          <section className="glass-panel rounded-2xl border border-slate-200/60 p-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-5">
-              <span className="material-symbols-outlined text-[20px] text-teal-600">style</span>
-              <h2 className="font-jakarta font-semibold text-slate-800 text-base">Card Template</h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {TEMPLATES.map(t => {
-                const active = values.card_template === t.value
-                return (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => setField('card_template', t.value)}
-                    className={[
-                      'relative text-left rounded-2xl border-2 p-4 transition-all focus:outline-none focus:ring-2 focus:ring-teal-400/50',
-                      active
-                        ? 'border-teal-500 bg-teal-50/60 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white/50',
-                    ].join(' ')}
-                  >
-                    {/* Template mini-illustration */}
-                    <TemplateIllustration
-                      template={t.value}
-                      primary={isValidHex(values.brand_primary_color)
-                        ? values.brand_primary_color
-                        : '#16181D'}
-                      active={active}
-                    />
-
-                    <div className="mt-3">
-                      <p className={[
-                        'text-sm font-semibold',
-                        active ? 'text-teal-700' : 'text-slate-700',
-                      ].join(' ')}>
-                        {t.label}
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                        {t.description}
-                      </p>
-                    </div>
-
-                    {active && (
-                      <span className="absolute top-3 right-3 w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-white text-[14px]">check</span>
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
 
           {/* Appearance */}
           <section className="glass-panel rounded-2xl border border-slate-200/60 p-6 shadow-sm">
@@ -930,76 +854,12 @@ export default function BrandingPage() {
               ctaUrl={values.cta_url}
               photoSrc={null}
               company={previewCompany}
-              cardTemplate={values.card_template}
             />
           </div>
         )}
 
       </div>
 
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// TemplateIllustration — small SVG diagram per template type
-// ---------------------------------------------------------------------------
-
-function TemplateIllustration({
-  template,
-  primary,
-  active,
-}: {
-  template: CardTemplate
-  primary: string
-  active: boolean
-}) {
-  const bg = active ? primary : '#cbd5e1'
-
-  if (template === 'minimal') {
-    return (
-      <div className="w-full h-16 rounded-xl overflow-hidden border border-slate-100 bg-white flex flex-col">
-        {/* Header stripe */}
-        <div className="h-5 w-full" style={{ backgroundColor: bg }} />
-        {/* Content */}
-        <div className="flex-1 px-2 py-1.5 space-y-1">
-          <div className="h-1.5 w-2/3 rounded-full bg-slate-200" />
-          <div className="h-1 w-1/2 rounded-full bg-slate-100" />
-          <div className="h-2 w-full rounded-md mt-1" style={{ backgroundColor: `${bg}33` }} />
-        </div>
-      </div>
-    )
-  }
-
-  if (template === 'bold') {
-    return (
-      <div className="w-full h-16 rounded-xl overflow-hidden border border-slate-100 bg-white flex flex-col">
-        {/* Big brand header */}
-        <div className="h-9 w-full flex items-end px-2 pb-1" style={{ backgroundColor: bg }}>
-          <div className="w-5 h-5 rounded-full bg-white/40" />
-        </div>
-        {/* Minimal content */}
-        <div className="flex-1 px-2 py-1 space-y-1">
-          <div className="h-1.5 w-1/2 rounded-full bg-slate-200" />
-          <div className="h-2 w-full rounded-md" style={{ backgroundColor: `${bg}33` }} />
-        </div>
-      </div>
-    )
-  }
-
-  // split
-  return (
-    <div className="w-full h-16 rounded-xl overflow-hidden border border-slate-100 bg-white flex flex-row">
-      {/* Left colour column */}
-      <div className="w-1/3 h-full flex items-center justify-center" style={{ backgroundColor: bg }}>
-        <div className="w-5 h-5 rounded-full bg-white/40" />
-      </div>
-      {/* Right content */}
-      <div className="flex-1 px-2 py-2 space-y-1">
-        <div className="h-1.5 w-3/4 rounded-full bg-slate-200" />
-        <div className="h-1 w-1/2 rounded-full bg-slate-100" />
-        <div className="h-2 w-full rounded-md mt-1" style={{ backgroundColor: `${bg}22` }} />
-      </div>
     </div>
   )
 }

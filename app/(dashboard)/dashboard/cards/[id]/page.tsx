@@ -932,7 +932,6 @@ export default function EditCardPage({
             ctaUrl=""
             photoSrc={photoDisplay}
             company={meta.company}
-            cardTemplate={meta.company.card_template}
           />
         </div>
       </div>

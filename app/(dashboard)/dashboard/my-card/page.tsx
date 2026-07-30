@@ -827,7 +827,6 @@ export default function MyCardPage() {
               ctaUrl={staffCtaUrl}
               photoSrc={photoSrc}
               company={previewCompany}
-              cardTemplate={card.company.card_template}
             />
           </div>
 

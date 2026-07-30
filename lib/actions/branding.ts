@@ -18,7 +18,9 @@ import { createClient } from '@/lib/supabase/server'
 // Types
 // ---------------------------------------------------------------------------
 
-export type CardTemplate = 'minimal' | 'bold' | 'split'
+// card_template is no longer read by the card page — one design for every
+// company. The column stays in the database so the decision is reversible
+// without a migration, but nothing writes it any more.
 
 export type UpdateCompanyBrandingInput = {
   name: string
@@ -27,7 +29,6 @@ export type UpdateCompanyBrandingInput = {
   brand_primary_color: string
   brand_secondary_color: string
   brand_dark_mode: boolean
-  card_template: CardTemplate
   cta_label: string
   cta_url: string
   logo_url: string | null
@@ -74,12 +75,6 @@ export async function updateCompanyBranding(
     return { error: 'Secondary colour must be a valid hex value (e.g. #F59608).' }
   }
 
-  // Validate card template
-  const validTemplates: CardTemplate[] = ['minimal', 'bold', 'split']
-  if (!validTemplates.includes(input.card_template)) {
-    return { error: 'Invalid card template.' }
-  }
-
   // Persist — RLS admin_update_own policy enforces company scope
   const { error: updateError } = await supabase
     .from('companies')
@@ -90,7 +85,6 @@ export async function updateCompanyBranding(
       brand_primary_color: input.brand_primary_color,
       brand_secondary_color: input.brand_secondary_color,
       brand_dark_mode: input.brand_dark_mode,
-      card_template: input.card_template,
       cta_label: input.cta_label.trim() || 'Send me a WhatsApp',
       cta_url: input.cta_url.trim() || null,
       logo_url: input.logo_url,
