@@ -1,11 +1,17 @@
-// app/api/view-event/wa-click/route.ts
+// app/api/view-event/cta-click/route.ts
 //
 // Method:  POST
 // Auth:    None — public endpoint.
-// Purpose: Mark wa_clicked = true for the visitor's current card view.
-//          Fired from the card page client component — fire-and-forget.
+// Purpose: Mark cta_clicked = true when a visitor taps the custom CTA (the
+//          Calendly / website / landing-page button configured per staff card
+//          or per company).
 //
 // Body:    { session_id: string, nfc_card_id: string, staff_card_id?: string }
+//
+// Why this route is new: card_views.cta_clicked has existed since the initial
+// schema, but nothing ever wrote to it — the custom CTA button carried no
+// onClick handler at all. Every custom CTA tap since launch went unrecorded
+// (0 of 145 live rows have cta_clicked set).
 //
 // Always returns 200 — tracking must never surface an error on the card page.
 
@@ -36,13 +42,13 @@ export async function POST(request: NextRequest) {
       nfcCardId: nfc_card_id,
       sessionId: session_id,
       staffCardId: await verifyStaffCardBelongsToNfcCard(nfc_card_id, staff_card_id),
-      flag: 'wa_clicked',
+      flag: 'cta_clicked',
       geo: readGeo(request.headers),
     })
 
     return ok()
   } catch (error) {
-    console.error('[wa-click]', error)
+    console.error('[cta-click]', error)
     return ok()
   }
 }

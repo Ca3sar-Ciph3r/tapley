@@ -43,8 +43,15 @@ export async function signIn(
       return { error: 'Too many sign-in attempts. Please wait a moment and try again.' }
     }
 
-    // Fallback for unexpected errors — temporarily showing raw error for debugging
-    return { error: `Debug: ${error.message} (code: ${error.status})` }
+    // Unexpected error: log the detail server-side, return a generic message.
+    // The raw Supabase message must never reach the login form — it can leak
+    // whether an account exists, rate-limit state, and provider internals.
+    console.error('[auth] sign-in failed:', {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    })
+    return { error: 'Could not sign you in. Please try again.' }
   }
 
   // On success, redirect to the role-based hub (dashboard/page.tsx handles role routing)

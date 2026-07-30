@@ -16,7 +16,9 @@ import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import type { Metadata } from 'next'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { buildWaLink, getFirstName } from '@/lib/utils/whatsapp'
+import { buildWaLink, getFirstName, isValidPhoneNumber } from '@/lib/utils/whatsapp'
+import { parseSocialLinks, hasSocialLinks } from '@/lib/utils/social-links'
+import { sanitiseExternalUrl } from '@/lib/utils/safe-url'
 import { ViewEventTracker } from '@/components/card/view-event-tracker'
 import { CardActions } from '@/components/card/card-actions'
 import { LeadCaptureSheet } from '@/components/card/lead-capture-sheet'
@@ -26,6 +28,24 @@ import type { Json } from '@/lib/types/database'
 // ISR: cache this page indefinitely; revalidate only via revalidatePath('/c/[slug]')
 export const revalidate = false
 
+// Required for `revalidate` to actually take effect on a dynamic segment.
+//
+// A dynamic route with no generateStaticParams is rendered on demand by Next on
+// EVERY request, regardless of the revalidate export — it never enters the full
+// route cache. Verified against production before this was added: no
+// x-nextjs-cache header at all, Cache-Control: private, no-cache, no-store,
+// and /c/[slug] absent from prerender-manifest.json. So every NFC tap was
+// hitting Supabase, and every revalidatePath() call in the mutation layer was
+// busting a cache that did not exist.
+//
+// Returning [] prerenders nothing at build time — slugs are created at runtime,
+// so there is nothing to enumerate — while still opting the route into static
+// generation with on-demand fallback. That is ISR, and what CLAUDE.md Rule 2
+// requires.
+export async function generateStaticParams() {
+  return []
+}
+
 interface PageProps {
   params: Promise<{ slug: string }>
 }
@@ -33,15 +53,6 @@ interface PageProps {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface SocialLinks {
-  linkedin?: string
-  instagram?: string
-  twitter?: string
-  facebook?: string
-  website?: string
-  calendly?: string
-}
 
 interface CompanyData {
   name: string
@@ -63,15 +74,6 @@ type StaffCardWithCompany = Tables<'staff_cards'> & {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function parseSocialLinks(raw: Json): SocialLinks {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  return raw as SocialLinks
-}
-
-function hasSocialLinks(links: SocialLinks): boolean {
-  return Object.values(links).some(Boolean)
-}
 
 // ---------------------------------------------------------------------------
 // generateMetadata — Open Graph for WhatsApp / iMessage link previews
@@ -349,6 +351,7 @@ export default async function CardPage({ params }: PageProps) {
 
           <CardActions
             nfcCardId={nfcCard.id}
+            staffCardId={staffCard.id}
             waUrl={waUrl}
             slug={slug}
             ctaLabel={ctaLabel}
@@ -488,6 +491,7 @@ export default async function CardPage({ params }: PageProps) {
 
             <CardActions
               nfcCardId={nfcCard.id}
+            staffCardId={staffCard.id}
               waUrl={waUrl}
               slug={slug}
               ctaLabel={ctaLabel}
@@ -692,6 +696,7 @@ export default async function CardPage({ params }: PageProps) {
         {/* ── CTA buttons: WhatsApp + Save Contact + Custom ─────────── */}
         <CardActions
           nfcCardId={nfcCard.id}
+            staffCardId={staffCard.id}
           waUrl={waUrl}
           slug={slug}
           ctaLabel={ctaLabel}

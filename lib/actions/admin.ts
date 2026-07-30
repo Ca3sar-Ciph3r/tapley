@@ -714,6 +714,15 @@ export async function deleteCompany(
 
   // 2. Remove nfc_cards (companies.nfc_cards FK is ON DELETE RESTRICT)
   //    card_views cascade automatically when nfc_cards are deleted
+  //
+  //    Capture the slugs first: their card pages are cached indefinitely, so
+  //    without an explicit revalidate the deleted client's staff details would
+  //    keep being served from the edge cache after deletion — a POPIA problem,
+  //    since deletion is exactly what a data-removal request asks for.
+  const { data: doomedCards } = await supabaseAdmin
+    .from('nfc_cards')
+    .select('slug')
+    .eq('company_id', companyId)
   const { error: nfcError } = await supabaseAdmin
     .from('nfc_cards')
     .delete()
@@ -731,6 +740,10 @@ export async function deleteCompany(
     .delete()
     .eq('id', companyId)
   if (companyError) return { error: `Failed to delete company: ${companyError.message}` }
+
+  for (const card of doomedCards ?? []) {
+    revalidatePath(`/c/${card.slug}`)
+  }
 
   return {}
 }
@@ -897,12 +910,23 @@ export async function updateNfcCardStatus(
   if (status === 'active') update.activated_at = new Date().toISOString()
   if (status === 'deactivated') update.deactivated_at = new Date().toISOString()
 
-  const { error } = await supabaseAdmin
+  const { data: updated, error } = await supabaseAdmin
     .from('nfc_cards')
     .update(update)
     .eq('id', nfcCardId)
+    .select('slug')
+    .maybeSingle()
 
-  return { error: error?.message }
+  if (error) return { error: error.message }
+
+  // The card page branches on order_status to serve the "no longer active"
+  // placeholder, so a status change must bust the ISR cache. Without this, a
+  // card deactivated because it was lost or stolen would keep serving that
+  // staff member's live phone number and email from the edge cache
+  // indefinitely — the page is cached with `revalidate = false`.
+  if (updated?.slug) revalidatePath(`/c/${updated.slug}`)
+
+  return {}
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import { getOrCreateSessionId } from '@/lib/utils/session'
 
 interface CardActionsProps {
   nfcCardId: string
+  staffCardId: string
   waUrl: string | null
   slug: string
   ctaLabel: string
@@ -28,6 +29,7 @@ interface CardActionsProps {
 
 export function CardActions({
   nfcCardId,
+  staffCardId,
   waUrl,
   slug,
   ctaLabel,
@@ -46,23 +48,37 @@ export function CardActions({
   const googleWalletEnabled =
     process.env.NEXT_PUBLIC_GOOGLE_WALLET_ENABLED === 'true'
 
-  function trackWaClick() {
+  // sendBeacon rather than fetch: every one of these buttons navigates away as
+  // it fires (wa.me, an external CTA, a .vcf download) and a pending fetch can
+  // be cancelled by that navigation, losing the conversion. sendBeacon is
+  // queued by the browser and survives unload. fetch+keepalive is the fallback.
+  function track(endpoint: string) {
     const sessionId = getOrCreateSessionId()
-    fetch('/api/view-event/wa-click', {
+    const payload = JSON.stringify({
+      session_id: sessionId,
+      nfc_card_id: nfcCardId,
+      staff_card_id: staffCardId,
+    })
+    const url = `/api/view-event/${endpoint}`
+
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }))
+      return
+    }
+
+    fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, nfc_card_id: nfcCardId }),
+      body: payload,
+      keepalive: true,
+    }).catch(() => {
+      // Fire-and-forget — tracking must never surface on the card page.
     })
   }
 
-  function trackVcfDownload() {
-    const sessionId = getOrCreateSessionId()
-    fetch('/api/view-event/vcf-download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, nfc_card_id: nfcCardId }),
-    })
-  }
+  const trackWaClick = () => track('wa-click')
+  const trackVcfDownload = () => track('vcf-download')
+  const trackCtaClick = () => track('cta-click')
 
   // In dark mode the accent bg is light (e.g. amber), so use dark text on it.
   // In light mode the primary bg is dark, so use white text.
@@ -107,6 +123,7 @@ export function CardActions({
           href={customCtaUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={trackCtaClick}
           className="flex items-center justify-center gap-2.5 rounded-full border py-4 text-base font-medium transition-opacity active:opacity-75"
           style={ghostStyle}
         >

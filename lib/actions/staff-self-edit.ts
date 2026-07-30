@@ -18,7 +18,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
+import { normalisePhoneNumber, isValidPhoneNumber } from '@/lib/utils/whatsapp'
+import { sanitiseUrlMap } from '@/lib/utils/safe-url'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,16 +77,30 @@ export async function updateOwnStaffCard(
     return { error: 'Staff card not found.' }
   }
 
-  // Normalise WhatsApp number to E.164 format (+27...)
+  // Normalise WhatsApp number to E.164 (+27...), then verify it is usable.
+  // This feeds the card's PRIMARY call to action — a dud number produces a
+  // wa.me link that opens to nothing while the card still looks perfect, so it
+  // has to fail loudly here rather than silently there.
   const whatsappNumber = input.whatsapp_number.trim()
     ? normalisePhoneNumber(input.whatsapp_number.trim())
     : null
 
-  // Strip empty social link values — store only non-empty keys
-  const socialLinks: Record<string, string> = {}
-  for (const [key, val] of Object.entries(input.social_links)) {
-    if (val && val.trim()) socialLinks[key] = val.trim()
+  if (whatsappNumber && !isValidPhoneNumber(whatsappNumber)) {
+    return {
+      error:
+        'That WhatsApp number does not look right. Use your full mobile number, e.g. 082 123 4567.',
+    }
   }
+
+  // Strip empty values, then sanitise. Adds a missing https:// so an honest
+  // typo still works, and drops anything that is not http(s) — a javascript:
+  // link here would be stored XSS on a public page, since React does not
+  // sanitise href.
+  const rawLinks: Record<string, string> = {}
+  for (const [key, val] of Object.entries(input.social_links)) {
+    if (val && val.trim()) rawLinks[key] = val.trim()
+  }
+  const socialLinks = sanitiseUrlMap(rawLinks)
 
   // Build update payload. photo_url is optional: only include it when the
   // caller explicitly changed the photo (upload or remove). Omitting it

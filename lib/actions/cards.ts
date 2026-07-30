@@ -14,7 +14,8 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { normalisePhoneNumber } from '@/lib/utils/whatsapp'
+import { normalisePhoneNumber, isValidPhoneNumber } from '@/lib/utils/whatsapp'
+import { sanitiseExternalUrl, sanitiseUrlMap } from '@/lib/utils/safe-url'
 import { getImpersonationState } from '@/lib/actions/admin'
 
 // ---------------------------------------------------------------------------
@@ -613,13 +614,25 @@ export async function updateStaffCard(
     ? normalisePhoneNumber(input.whatsapp_number.trim())
     : phone
 
-  // Strip empty social link values — store only non-empty keys
-  const socialLinks: Record<string, string> = {}
+  // Same guard rails as the staff self-edit path: an admin typing a malformed
+  // number produces a dead primary CTA just as easily as a staff member does.
+  if (phone && !isValidPhoneNumber(phone)) {
+    return { error: 'That phone number does not look right. Use the full number, e.g. 082 123 4567.' }
+  }
+  if (whatsappNumber && !isValidPhoneNumber(whatsappNumber)) {
+    return { error: 'That WhatsApp number does not look right. Use the full mobile number, e.g. 082 123 4567.' }
+  }
+
+  // Strip empty values, then sanitise: adds a missing https://, and drops
+  // anything that is not http(s) — javascript: in a link would be stored XSS
+  // on a public page.
+  const rawLinks: Record<string, string> = {}
   for (const [key, val] of Object.entries(input.social_links)) {
     if (val && val.trim()) {
-      socialLinks[key] = val.trim()
+      rawLinks[key] = val.trim()
     }
   }
+  const socialLinks = sanitiseUrlMap(rawLinks)
 
   // Build update payload. photo_url is optional: only include it when the
   // caller explicitly changed the photo (upload or remove). Omitting it
@@ -632,7 +645,10 @@ export async function updateStaffCard(
   // preserves any existing per-card overrides already stored in the database.
   const ctaUpdate = {
     ...(typeof input.cta_label !== 'undefined' ? { cta_label: input.cta_label.trim() || null } : {}),
-    ...(typeof input.cta_url !== 'undefined' ? { cta_url: input.cta_url.trim() || null } : {}),
+    // Sanitised: this ends up in an href on a public page.
+    ...(typeof input.cta_url !== 'undefined'
+      ? { cta_url: sanitiseExternalUrl(input.cta_url) }
+      : {}),
   }
 
   const { error } = await supabase

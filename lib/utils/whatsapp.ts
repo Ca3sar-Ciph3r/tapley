@@ -29,6 +29,31 @@ export function normalisePhoneNumber(input: string): string {
 }
 
 /**
+ * Is this a usable E.164 number for a wa.me link?
+ *
+ * normalisePhoneNumber is pure string surgery and will happily return "+" for
+ * an empty string or "+123" for junk. Both produce a wa.me link that opens to
+ * nothing — and this is the card's PRIMARY call to action, so a dud number
+ * means the main button silently does nothing while the card still looks
+ * perfect. That is the worst kind of breakage: invisible to the person who
+ * caused it and to the person who tapped the card.
+ *
+ * Deliberately permissive on country: staff may legitimately carry a non-SA
+ * number. It only enforces the shape of a plausible international mobile.
+ */
+export function isValidPhoneNumber(e164: string | null | undefined): boolean {
+  if (!e164) return false
+  if (!/^\+[1-9]\d{7,14}$/.test(e164)) return false
+
+  // South African numbers are +27 followed by exactly 9 digits. Worth checking
+  // specifically: a dropped or doubled leading zero is the most common local
+  // mistake and produces a number that looks right but is not.
+  if (e164.startsWith('+27')) return /^\+27\d{9}$/.test(e164)
+
+  return true
+}
+
+/**
  * Build a wa.me deeplink that pre-fills a greeting message.
  *
  * @param phoneNumber  E.164 format (+27821234567)

@@ -17,6 +17,16 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import {
+  DEDUP_WINDOW_MS,
+  readGeo,
+  nfcCardExists,
+  verifyStaffCardBelongsToNfcCard,
+} from '@/lib/analytics/card-events'
+import { allowRequest, clientKey } from '@/lib/analytics/rate-limit'
+
+/** Sources the client is allowed to claim. Anything else is recorded as unknown. */
+const VALID_SOURCES = new Set(['nfc', 'qr', 'link', 'email', 'event', 'unknown'])
 
 // Always return 200 — never let tracking errors surface to the card page
 const ok = () => NextResponse.json({ ok: true })
@@ -68,31 +78,55 @@ function parseUserAgent(ua: string): ParsedUserAgent {
 
 export async function POST(request: NextRequest) {
   try {
+    // Public endpoint: cap volume per client so nobody can sit in a loop
+    // inflating a competitor's numbers. Still returns 200 — a dropped event
+    // must look identical to an accepted one from the outside.
+    if (!allowRequest(clientKey(request.headers))) return ok()
+
     const body = await request.json()
     const { nfc_card_id, staff_card_id, session_id, source } = body
 
     // Validate required fields — silently ignore malformed requests
-    if (!nfc_card_id || !session_id) {
+    if (typeof session_id !== 'string' || !session_id) {
       return ok()
     }
+
+    // This endpoint is public and unauthenticated. Confirm the nfc_card is real
+    // and that the claimed staff_card actually belongs to it — otherwise anyone
+    // could POST arbitrary pairs and attribute views to a competitor's staff.
+    if (!(await nfcCardExists(nfc_card_id))) {
+      return ok()
+    }
+    const verifiedStaffCardId = await verifyStaffCardBelongsToNfcCard(
+      nfc_card_id,
+      staff_card_id
+    )
 
     // Parse User-Agent for device/OS/browser detection
     const userAgent = request.headers.get('user-agent') ?? ''
     const { device_type, os, browser } = parseUserAgent(userAgent)
 
-    // City from Cloudflare header (Vercel passes this automatically on Pro/Enterprise)
-    const city = request.headers.get('cf-ipcity') ?? null
+    // The previous code read `cf-ipcity`, a CLOUDFLARE header, on a Vercel
+    // deployment — so city was always null in production (confirmed: 0 of 145
+    // live rows carry one) and country was the hardcoded 'ZA' default.
+    const { city, country } = readGeo(request.headers)
     const referrerUrl = request.headers.get('referer') ?? null
 
     // Dedup check: same session + card within 30 minutes?
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    // Ordered + limit(1) + maybeSingle, NOT .single(): .single() raises on 2+
+    // matches, which made `existing` null and inserted yet another duplicate.
+    // Live data already carries 7 duplicate session/card pairs from this —
+    // 145 rows for 137 real views, roughly 6% inflation.
+    const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString()
     const { data: existing } = await supabaseAdmin
       .from('card_views')
       .select('id')
       .eq('session_id', session_id)
       .eq('nfc_card_id', nfc_card_id)
-      .gte('viewed_at', thirtyMinutesAgo)
-      .single()
+      .gte('viewed_at', windowStart)
+      .order('viewed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (existing) {
       // Dedup hit — refresh the timestamp only
@@ -108,15 +142,18 @@ export async function POST(request: NextRequest) {
       .from('card_views')
       .insert({
         nfc_card_id,
-        staff_card_id: staff_card_id ?? null,
+        staff_card_id: verifiedStaffCardId,
         session_id,
-        source: source ?? 'unknown',
+        source:
+          typeof source === 'string' && VALID_SOURCES.has(source)
+            ? source
+            : 'unknown',
         device_type,
         os,
         browser,
         city,
         referrer_url: referrerUrl,
-        country: 'ZA', // Default for SA MVP; improve with IP geolocation post-MVP
+        country,
       })
 
     if (insertError) {
@@ -126,13 +163,14 @@ export async function POST(request: NextRequest) {
 
     // WA notification via Make.com (fire-and-forget — do not await)
     const makeWebhookUrl = process.env.MAKE_WEBHOOK_VIEW_EVENT
-    if (makeWebhookUrl && staff_card_id) {
+    if (makeWebhookUrl && verifiedStaffCardId) {
       // Fetch staff card to check wa_notify_enabled before firing
       const { data: staffCard } = await supabaseAdmin
         .from('staff_cards')
         .select('wa_notify_enabled, full_name, whatsapp_number')
-        .eq('id', staff_card_id)
-        .single()
+        .eq('id', verifiedStaffCardId)
+        .limit(1)
+        .maybeSingle()
 
       if (staffCard?.wa_notify_enabled) {
         fetch(makeWebhookUrl, {
@@ -140,7 +178,7 @@ export async function POST(request: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'card_view',
-            staff_card_id,
+            staff_card_id: verifiedStaffCardId,
             staff_name: staffCard.full_name,
             source: source ?? 'unknown',
             city,
@@ -162,7 +200,7 @@ export async function POST(request: NextRequest) {
             .from('wa_notifications_log')
             .insert({
               company_id:       null, // nullable — avoids an extra query here
-              staff_card_id:    staff_card_id,
+              staff_card_id:    verifiedStaffCardId,
               recipient_number: staffCard.whatsapp_number,
               message_template: 'card_view',
               channel:          'make_webhook',

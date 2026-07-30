@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans, Manrope } from 'next/font/google'
 import './globals.css'
 
@@ -19,6 +19,19 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: 'Tapley Connect',
   description: 'Digital Business Card Management Platform',
+}
+
+// Without this, mobile browsers assume a ~980px desktop viewport and scale the
+// whole page down: tiny text, wrong tap targets. On a product whose entire
+// purpose is being tapped on a phone, this one export is the highest-impact
+// visual fix in the codebase.
+//
+// maximumScale is 5, not 1 — pinning it to 1 blocks pinch-zoom, which is an
+// accessibility failure (WCAG 1.4.4).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 }
 
 export default function RootLayout({
