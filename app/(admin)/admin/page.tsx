@@ -655,7 +655,11 @@ export default function SuperAdminPage() {
     }))
 
     setCompanies(rows)
-    setTotalCards(rawCards.length)
+    // The card stat is labelled "Active Staff Cards", so it must filter here.
+    // rawCards deliberately carries departed staff too — that is what keeps
+    // their views in the company totals — so counting it raw reported 6 active
+    // cards against the 4 that exist, and disagreed with /admin/analytics.
+    setTotalCards(rawCards.filter(c => c.is_active).length)
     setTotalViews(viewsResult.count ?? 0)
     setLoading(false)
   }
