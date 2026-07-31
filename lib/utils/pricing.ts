@@ -130,7 +130,15 @@ export function getLegacyTierForCardCount(count: number): LegacyPricingTier {
   return (
     LEGACY_PRICING_TIERS.find(
       t => count >= t.minCards && (t.maxCards === null || count <= t.maxCards)
-    ) ?? LEGACY_PRICING_TIERS[LEGACY_PRICING_TIERS.length - 1]
+    ) ??
+    // Below the smallest tier (fewer than 5 cards) nothing matches, and the
+    // fallback used to be the LAST tier — Enterprise. So a one-card company was
+    // priced as Enterprise and billed for its 61-card minimum: Jacks Bagels
+    // showed "Billable cards 61" and R4,819/mo against a single active card.
+    // Too few cards means the entry tier and its minimum, never the largest.
+    (count < LEGACY_PRICING_TIERS[0].minCards
+      ? LEGACY_PRICING_TIERS[0]
+      : LEGACY_PRICING_TIERS[LEGACY_PRICING_TIERS.length - 1])
   )
 }
 

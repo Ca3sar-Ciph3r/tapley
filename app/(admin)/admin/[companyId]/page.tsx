@@ -666,9 +666,14 @@ export default function CompanyDetailPage() {
         .select('id, slug, order_status, chip_uid, print_batch_id, notes, created_at, staff_cards(full_name)')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false }),
+      // Scoped through nfc_cards, which carries company_id — card_views does
+      // not. Without this filter the count was every view in the database, so
+      // the "Total Views" stat showed the same global number on every
+      // company's page.
       supabase
         .from('card_views')
-        .select('id', { count: 'exact', head: true }),
+        .select('id, nfc_cards!inner(company_id)', { count: 'exact', head: true })
+        .eq('nfc_cards.company_id', companyId),
       supabase
         .from('card_views')
         .select('staff_card_id')

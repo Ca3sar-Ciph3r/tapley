@@ -594,10 +594,14 @@ export default function SuperAdminPage() {
         .from('companies')
         .select('id, name, slug, subscription_plan, subscription_status, max_staff_cards, created_at, self_service, archived_at')
         .order('created_at', { ascending: false }),
+      // is_active comes back as a column rather than a filter: the card COUNT
+      // per company wants active only, but the view mapping must include
+      // departed staff or their history disappears from the company's numbers.
+      // /admin/analytics already counts them, so filtering here made the same
+      // company show two different totals on two of Tapley's own pages.
       supabase
         .from('staff_cards')
-        .select('id, company_id')
-        .eq('is_active', true),
+        .select('id, company_id, is_active'),
       supabase
         .from('card_views')
         .select('id, staff_card_id', { count: 'exact', head: true }),
@@ -618,12 +622,16 @@ export default function SuperAdminPage() {
     const rawViews30d = views30dResult.data ?? []
 
     // Build lookup maps
+    // Card count is a "how many people do they have right now" figure, so it
+    // counts active cards only.
     const cardCountByCompany = new Map<string, number>()
     for (const c of rawCards) {
+      if (!c.is_active) continue
       cardCountByCompany.set(c.company_id, (cardCountByCompany.get(c.company_id) ?? 0) + 1)
     }
 
-    // Map views to company via staff_card lookup
+    // The view mapping covers every card the company has ever had, active or
+    // not, so a reassignment does not erase the history behind it.
     const staffCardToCompany = new Map<string, string>()
     for (const c of rawCards) {
       staffCardToCompany.set(c.id, c.company_id)

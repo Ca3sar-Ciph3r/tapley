@@ -483,11 +483,17 @@ export default function AnalyticsPage() {
 
     // Round 1: staff_cards + contacts — both scoped to effectiveCompanyId
     const [cardsResult, contacts30dResult, contactsPrev30dResult] = await Promise.all([
+      // is_active is deliberately NOT filtered here. It is applied below, to
+      // the card list only — never to the view scoping. Filtering it at the
+      // query would drop every view belonging to a staff member who has since
+      // left, and reassigning a card when someone leaves is the product's whole
+      // premise. Jacks Bagels was showing 20 of its 80 views for exactly this
+      // reason. Company totals are the company's history and must survive
+      // staff turnover.
       supabase
         .from('staff_cards')
-        .select('id, full_name, job_title, photo_url, department')
-        .eq('company_id', effectiveCompanyId)
-        .eq('is_active', true),
+        .select('id, full_name, job_title, photo_url, department, is_active')
+        .eq('company_id', effectiveCompanyId),
       supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true })
@@ -507,7 +513,15 @@ export default function AnalyticsPage() {
       return
     }
 
-    const staffCardIds = (cardsResult.data ?? []).map(c => c.id)
+    const allCards = cardsResult.data ?? []
+
+    // Every card the company has ever had — scopes the view query, so totals
+    // include people who have since left.
+    const staffCardIds = allCards.map(c => c.id)
+
+    // Only current staff are listed per-card. A departed person should not sit
+    // in the leaderboard, but their views still belong to the company.
+    const activeCards = allCards.filter(c => c.is_active)
 
     // Round 2: card_views scoped via staff_card_ids (card_views has no company_id column)
     const viewsResult = staffCardIds.length > 0
@@ -525,7 +539,7 @@ export default function AnalyticsPage() {
     }
 
     setRawViews((viewsResult.data ?? []) as RawView[])
-    setStaffCards((cardsResult.data ?? []) as RawStaffCard[])
+    setStaffCards(activeCards as RawStaffCard[])
     setContactsCount30d(contacts30dResult.count ?? 0)
     setContactsCountPrev30d(contactsPrev30dResult.count ?? 0)
     setLoading(false)

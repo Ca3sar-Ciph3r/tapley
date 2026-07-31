@@ -5,7 +5,9 @@
 
 import {
   getTierForCardCount,
+  getLegacyTierForCardCount,
   calculateBilling,
+  calculateBillingLegacy,
   PRICING_TIERS,
   type BillingCycle,
 } from './pricing'
@@ -141,5 +143,47 @@ describe('PRICING_TIERS constant', () => {
   test('Enterprise has null maxCards', () => {
     const enterprise = PRICING_TIERS.find(t => t.name === 'Enterprise')!
     expect(enterprise.maxCards).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getLegacyTierForCardCount / calculateBillingLegacy
+//
+// Legacy tiers start at 5 cards, so any count below that matches no tier. The
+// fallback used to be the LAST tier — Enterprise — which priced a one-card
+// company at its 61-card minimum. Jacks Bagels showed "Billable cards 61" and
+// R4,819/mo against a single active card.
+// ---------------------------------------------------------------------------
+
+describe('getLegacyTierForCardCount — below the smallest tier', () => {
+  test.each([0, 1, 2, 3, 4])('%i cards → Starter, not Enterprise', count => {
+    expect(getLegacyTierForCardCount(count).name).toBe('starter')
+  })
+
+  test('5 cards → Starter (lower bound of the first tier)', () => {
+    expect(getLegacyTierForCardCount(5).name).toBe('starter')
+  })
+
+  test('61+ cards still reaches Enterprise', () => {
+    expect(getLegacyTierForCardCount(61).name).toBe('enterprise')
+    expect(getLegacyTierForCardCount(500).name).toBe('enterprise')
+  })
+})
+
+describe('calculateBillingLegacy — one-card company', () => {
+  const estimate = calculateBillingLegacy(1, 0)
+
+  test('bills the Starter minimum, not the Enterprise minimum', () => {
+    expect(estimate.billedCards).toBe(5)
+    expect(estimate.tier.name).toBe('starter')
+  })
+
+  test('monthly total is the Starter minimum, not thousands', () => {
+    // 5 x R149, versus the 61 x R79 = R4,819 the fallback used to produce.
+    expect(estimate.monthlyTotalZar).toBe(745)
+  })
+
+  test('setup fee follows the real card count, not the billed minimum', () => {
+    expect(estimate.setupTotalZar).toBe(350)
   })
 })
