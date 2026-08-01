@@ -41,7 +41,7 @@ export interface CardTheme {
   onBrand: string
 }
 
-interface Rgb {
+export interface Rgb {
   r: number
   g: number
   b: number
@@ -50,7 +50,7 @@ interface Rgb {
 const FALLBACK_PRIMARY = '#16181D'
 const FALLBACK_SECONDARY = '#F59608'
 
-function parseHex(hex: string | null | undefined, fallback: string): Rgb {
+export function parseHex(hex: string | null | undefined, fallback: string): Rgb {
   const source = /^#[0-9a-f]{6}$/i.test(hex ?? '') ? (hex as string) : fallback
   return {
     r: parseInt(source.slice(1, 3), 16),
@@ -62,7 +62,7 @@ function parseHex(hex: string | null | undefined, fallback: string): Rgb {
 const toCss = ({ r, g, b }: Rgb): string => `rgb(${r}, ${g}, ${b})`
 
 /** Blend `amount` (0–1) of `a` into `b`. Mirrors CSS color-mix in sRGB. */
-function mix(a: Rgb, b: Rgb, amount: number): Rgb {
+export function mix(a: Rgb, b: Rgb, amount: number): Rgb {
   const t = Math.min(1, Math.max(0, amount))
   return {
     r: Math.round(a.r * t + b.r * (1 - t)),
@@ -78,7 +78,7 @@ const rgba = ({ r, g, b }: Rgb, alpha: number): string =>
  * Relative luminance per WCAG 2.1.
  * Used to decide whether text on the accent should be black or white.
  */
-function luminance({ r, g, b }: Rgb): number {
+export function luminance({ r, g, b }: Rgb): number {
   const channel = (value: number): number => {
     const c = value / 255
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
@@ -101,7 +101,7 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
  * accent is walked toward white (on a dark ground) or black (on a light one)
  * until it passes. The company's colour is preserved whenever it already does.
  */
-function ensureAccentContrast(accent: Rgb, bg: Rgb, minRatio: number): Rgb {
+export function ensureAccentContrast(accent: Rgb, bg: Rgb, minRatio: number): Rgb {
   if (contrastRatio(accent, bg) >= minRatio) return accent
 
   const target: Rgb =

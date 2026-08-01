@@ -20,6 +20,8 @@ import { signOut } from '@/lib/actions/auth'
 interface SidebarProps {
   userName: string
   companyName: string
+  /** Company logo for the white-labelled header. Falls back to the name. */
+  companyLogoUrl?: string | null
   role: 'admin' | 'super_admin' | 'staff'
 }
 
@@ -56,6 +58,7 @@ const STAFF_NAV: NavItem[] = [
 export default function DashboardSidebar({
   userName,
   companyName,
+  companyLogoUrl = null,
   role,
 }: SidebarProps) {
   const pathname = usePathname()
@@ -68,12 +71,34 @@ export default function DashboardSidebar({
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-60 z-40 glass-panel border-r border-slate-200/50 flex flex-col p-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-      {/* Brand */}
+      {/*
+        White-label header. The client's mark stands where the Tapley wordmark
+        used to, so the dashboard reads as their own tool.
+
+        Height is fixed and the image is object-contain, so a wide wordmark and
+        a square icon both sit in the same box and nothing below them moves.
+        Companies with no logo keep the previous treatment — their name in the
+        same slot — rather than an empty gap.
+      */}
       <div className="mb-8">
-        <h1 className="font-jakarta text-xl font-bold tracking-tight text-slate-900">
-          Tapley Connect
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5 truncate">{companyName}</p>
+        {companyLogoUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={companyLogoUrl}
+              alt={companyName}
+              className="h-9 w-full object-contain object-left"
+            />
+            <p className="mt-1.5 truncate text-xs text-slate-500">{companyName}</p>
+          </>
+        ) : (
+          <>
+            <h1 className="font-jakarta text-xl font-bold tracking-tight text-slate-900">
+              {companyName}
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500">Digital Business Cards</p>
+          </>
+        )}
       </div>
 
       {/* Navigation */}
@@ -121,6 +146,16 @@ export default function DashboardSidebar({
             Sign out
           </button>
         </form>
+
+        {/*
+          Attribution. Deliberately quiet — the client is paying to have this
+          feel like their software — but always present, so every person on
+          their team sees who built it. This is the only Tapley mark left on a
+          white-labelled dashboard.
+        */}
+        <p className="pt-1 text-center text-[10px] text-slate-400">
+          Powered by Tapley
+        </p>
       </div>
     </aside>
   )

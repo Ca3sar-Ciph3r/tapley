@@ -8,6 +8,31 @@
        on the card page wrapper based on companies.brand_primary_color etc. */
     --brand-primary: #16181D;
     --brand-secondary: #F59608;
+
+    /* Accent ramp behind every `teal-*` utility (see tailwind.config.ts).
+       These are Tailwind's own teal values, so anything that does not override
+       them — the super admin panel, the login page, marketing — renders exactly
+       as before. The dashboard shell overrides them per company to white-label
+       itself. Space-separated channels, not hex: the `rgb(var(--x) / <alpha>)`
+       form is what keeps opacity modifiers like `teal-400/50` working. */
+    --brand-50: 240 253 250;
+    --brand-100: 204 251 241;
+    --brand-200: 153 246 228;
+    --brand-300: 94 234 212;
+    --brand-400: 45 212 191;
+    --brand-500: 20 184 166;
+    --brand-600: 13 148 136;
+    --brand-700: 15 118 110;
+    --brand-800: 17 94 89;
+    --brand-900: 19 78 74;
+    --brand-950: 4 47 46;
+
+    /* The mesh background's warm accent. Kept separate from the ramp above
+       because Tapley's own mesh uses rgb(0,201,167), which is close to but not
+       exactly teal-500 — pinning it here means the admin panel and login keep
+       their current background pixel-for-pixel while a white-labelled
+       dashboard tints its own. */
+    --mesh-accent: 0 201 167;
   }
 }
 
@@ -21,9 +46,9 @@
   .mesh-gradient {
     background-color: #faf8ff;
     background-image:
-      radial-gradient(at 0% 0%, rgba(0, 201, 167, 0.15) 0px, transparent 50%),
+      radial-gradient(at 0% 0%, rgb(var(--mesh-accent) / 0.15) 0px, transparent 50%),
       radial-gradient(at 100% 0%, rgba(129, 140, 248, 0.15) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(0, 201, 167, 0.1) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgb(var(--mesh-accent) / 0.1) 0px, transparent 50%),
       radial-gradient(at 0% 100%, rgba(129, 140, 248, 0.1) 0px, transparent 50%);
   }
 
